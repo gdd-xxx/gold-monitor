@@ -1,11 +1,25 @@
-import os, json
+import os, json, tempfile
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+
+def _get_data_dir():
+    primary = os.path.join(BASE_DIR, "data")
+    try:
+        os.makedirs(primary, exist_ok=True)
+        test_file = os.path.join(primary, ".write_test")
+        with open(test_file, "w") as f:
+            f.write("ok")
+        os.remove(test_file)
+        return primary
+    except (PermissionError, OSError):
+        fallback = os.path.join(tempfile.gettempdir(), "gold-monitor-data")
+        os.makedirs(fallback, exist_ok=True)
+        print(f"[Config] data目录不可写，使用临时目录: {fallback}")
+        return fallback
+
+DATA_DIR = _get_data_dir()
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 DB_FILE = os.path.join(DATA_DIR, "gold.db")
-
-os.makedirs(DATA_DIR, exist_ok=True)
 
 DEFAULT_CONFIG = {
     "gold_api_url": "https://www.czbank.com/gold/query",
