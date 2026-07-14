@@ -1,0 +1,8 @@
+data/
+.git/
+.github/
+.env
+*.pyc
+__pycache__/
+*.md
+LICENSE

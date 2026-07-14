@@ -1,0 +1,83 @@
+import requests, re, json, datetime, random
+from .config import load_config
+
+def fetch_czbank_price():
+    """Fetch gold price from 浙商银行"""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Referer": "https://www.czbank.com/",
+        }
+        resp = requests.get("https://www.czbank.com/gold/query", headers=headers, timeout=10)
+        resp.encoding = "utf-8"
+        text = resp.text
+
+        price_match = re.search(r'(\d{3,4}\.\d{2})', text)
+        if price_match:
+            return float(price_match.group(1))
+
+        alt_urls = [
+            "https://www.czbank.com/channel/goldPrice",
+            "https://gold.czbank.com/gold/query",
+        ]
+        for url in alt_urls:
+            try:
+                resp = requests.get(url, headers=headers, timeout=10)
+                resp.encoding = "utf-8"
+                price_match = re.search(r'(\d{3,4}\.\d{2})', resp.text)
+                if price_match:
+                    return float(price_match.group(1))
+            except Exception:
+                continue
+
+        return _fetch_fallback_price()
+    except Exception as e:
+        print(f"[GoldPrice] CZBank fetch error: {e}")
+        return _fetch_fallback_price()
+
+def _fetch_fallback_price():
+    """Fallback: try SGE (上海黄金交易所)"""
+    try:
+        resp = requests.get("https://www.sge.com.cn/sjzx/mrhqsj", timeout=10)
+        resp.encoding = "utf-8"
+        prices = re.findall(r'(\d{3,4}\.\d{2})', resp.text)
+        if prices:
+            return float(prices[0])
+    except Exception:
+        pass
+    return None
+
+def fetch_custom_api_price(api_url):
+    """Fetch price from user-provided API"""
+    try:
+        resp = requests.get(api_url, timeout=10)
+        data = resp.json()
+        if "price" in data:
+            return float(data["price"])
+        if "data" in data and "price" in data["data"]:
+            return float(data["data"]["price"])
+        prices = re.findall(r'(\d{3,4}\.\d{2})', json.dumps(data))
+        if prices:
+            return float(prices[0])
+        return None
+    except Exception as e:
+        print(f"[GoldPrice] Custom API error: {e}")
+        return None
+
+def get_current_price():
+    cfg = load_config()
+    if cfg.get("use_custom_api") and cfg.get("custom_api_url"):
+        price = fetch_custom_api_price(cfg["custom_api_url"])
+        if price:
+            return price, "custom"
+    price = fetch_czbank_price()
+    return price, "czbank"
+
+def calculate_pnl(purchase_price, current_price, fee_percent=0):
+    """Calculate profit/loss per gram"""
+    cost = purchase_price * (1 + fee_percent / 100)
+    pnl = current_price - cost
+    pnl_percent = (pnl / cost) * 100
+    return round(pnl, 2), round(pnl_percent, 2)

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>金价监控</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>实时金价监控</h1>
+        <div class="current-price" id="currentPrice">加载中...</div>
+        <div class="price-time" id="priceTime"></div>
+    </header>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="chart">折线图</button>
+        <button class="tab" data-tab="pnl">盈亏计算</button>
+        <button class="tab" data-tab="settings">设置</button>
+        <button class="tab" data-tab="chat">聊天控制</button>
+    </div>
+
+    <div class="tab-content active" id="tab-chart">
+        <div class="chart-controls">
+            <select id="chartDays">
+                <option value="1">今日</option>
+                <option value="7">近7天</option>
+                <option value="30" selected>近30天</option>
+            </select>
+            <button onclick="refreshChart()" class="btn btn-sm">刷新</button>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="goldChart"></canvas>
+        </div>
+        <div class="today-prices" id="todayPrices"></div>
+    </div>
+
+    <div class="tab-content" id="tab-pnl">
+        <div class="card">
+            <h3>添加买入记录</h3>
+            <div class="form-row">
+                <label>买入金价(元/克)</label>
+                <input type="number" id="buyPrice" step="0.01" placeholder="如 870.5">
+            </div>
+            <div class="form-row">
+                <label>手续费(%)</label>
+                <input type="number" id="buyFee" step="0.01" value="0" placeholder="0.5">
+            </div>
+            <div class="form-row">
+                <label>备注</label>
+                <input type="text" id="buyNote" placeholder="如: 2024年1月购入">
+            </div>
+            <button onclick="addPurchase()" class="btn">添加</button>
+        </div>
+        <div id="pnlResults"></div>
+    </div>
+
+    <div class="tab-content" id="tab-settings">
+        <div class="card">
+            <h3>数据源设置</h3>
+            <div class="form-row">
+                <label class="switch-label">
+                    <input type="checkbox" id="useCustomApi">
+                    <span>使用自定义API</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label>自定义API地址</label>
+                <input type="text" id="customApiUrl" placeholder="https://your-api.com/gold">
+            </div>
+            <button onclick="saveSourceSettings()" class="btn">保存</button>
+        </div>
+        <div class="card">
+            <h3>推送设置</h3>
+            <div class="channel-section">
+                <h4>微信企业号</h4>
+                <div class="form-row">
+                    <label>Webhook地址</label>
+                    <input type="text" id="wechatWebhook" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+                </div>
+                <button onclick="testPush('wechat')" class="btn btn-sm">测试推送</button>
+            </div>
+            <div class="channel-section">
+                <h4>飞书</h4>
+                <div class="form-row">
+                    <label>Webhook地址</label>
+                    <input type="text" id="feishuWebhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+                </div>
+                <button onclick="testPush('feishu')" class="btn btn-sm">测试推送</button>
+            </div>
+            <div class="channel-section">
+                <h4>QQ机器人</h4>
+                <div class="form-row">
+                    <label>AppID</label>
+                    <input type="text" id="qqAppId">
+                </div>
+                <div class="form-row">
+                    <label>AppSecret</label>
+                    <input type="text" id="qqToken">
+                </div>
+                <div class="form-row">
+                    <label>群号</label>
+                    <input type="text" id="qqGroupId">
+                </div>
+                <button onclick="testPush('qq')" class="btn btn-sm">测试推送</button>
+            </div>
+            <button onclick="savePushSettings()" class="btn">保存推送设置</button>
+        </div>
+        <div class="card">
+            <h3>预警设置</h3>
+            <div class="form-row">
+                <label class="switch-label">
+                    <input type="checkbox" id="alertEnabled">
+                    <span>启用价格预警</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label>低于此价推送(元/克)</label>
+                <input type="number" id="alertLow" step="0.01" placeholder="870">
+            </div>
+            <div class="form-row">
+                <label>高于此价推送(元/克)</label>
+                <input type="number" id="alertHigh" step="0.01" placeholder="900">
+            </div>
+            <button onclick="saveAlertSettings()" class="btn">保存预警设置</button>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-chat">
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages">
+                <div class="chat-msg system">输入命令控制程序，如"阈值870-900"、"添加870.5"、"查询"、"帮助"</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="输入命令..." onkeypress="if(event.key==='Enter')sendChat()">
+                <button onclick="sendChat()" class="btn">发送</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
