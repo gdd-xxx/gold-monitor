@@ -228,6 +228,15 @@ def create_app():
     scheduler.start()
     scheduled_fetch()
     atexit.register(_shutdown_scheduler)
+
+    try:
+        from .qqbot import qqbot
+        qq = cfg.get("push_channels", {}).get("qq_bot", {})
+        if qq.get("app_id") and qq.get("app_secret"):
+            qqbot.start()
+    except Exception as e:
+        print(f"[QQBot] 启动失败: {e}")
+
     return app
 
 if __name__ == "__main__":

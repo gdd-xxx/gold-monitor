@@ -49,6 +49,8 @@ def _qq_send_message(app_id, access_token, chat_id, chat_type, content):
         url = f"{QQ_API_BASE}/v2/groups/{chat_id}/messages"
     elif chat_type == "c2c":
         url = f"{QQ_API_BASE}/v2/users/{chat_id}/messages"
+    elif chat_type == "channel":
+        url = f"{QQ_API_BASE}/channels/{chat_id}/messages"
     else:
         return False, f"不支持的聊天类型: {chat_type}"
 
