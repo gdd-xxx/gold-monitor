@@ -6,6 +6,7 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 env:
   REGISTRY: crpi-emvv544kvrp3bd7n.cn-hangzhou.personal.cr.aliyuncs.com
