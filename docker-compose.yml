@@ -7,6 +7,3 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-    environment:
-      - TZ=Asia/Shanghai
-    user: "1000:1000"
