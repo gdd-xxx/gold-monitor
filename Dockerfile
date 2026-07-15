@@ -3,21 +3,19 @@ FROM python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc tzdata && rm -rf /var/lib/apt/lists/*
+    gcc tzdata curl && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://get.docker.com | sh
 
 ENV TZ=Asia/Shanghai
 ENV PYTHONUNBUFFERED=1
-
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/data && chown -R appuser:appuser /app
-
-USER appuser
+RUN mkdir -p /app/data
 
 EXPOSE 5000
 

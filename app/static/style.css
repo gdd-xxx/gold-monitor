@@ -337,6 +337,35 @@ input::placeholder { color: var(--text-3); }
 }
 .btn-primary { background: var(--gold); color: #000; }
 .btn-primary:hover { background: #fcc419; }
+
+/* Update */
+.update-info {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+.update-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+.update-row:last-child { border-bottom: none; }
+.update-label { color: var(--text-3); font-size: 0.85em; }
+.update-value { font-weight: 500; }
+.update-status {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.85em;
+    display: none;
+}
+.update-status.show { display: block; }
+.update-status.success { background: var(--green-dim); color: var(--green); }
+.update-status.error { background: var(--red-dim); color: var(--red); }
+.update-status.info { background: var(--gold-dim); color: var(--gold); }
+.update-actions { display: flex; gap: 8px; }
 .btn-block { width: 100%; justify-content: center; }
 
 /* PnL */

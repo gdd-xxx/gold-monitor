@@ -14,10 +14,71 @@ document.addEventListener("DOMContentLoaded", () => {
     loadTodayPrices();
     loadPnl();
     loadConfig();
+    loadVersion();
     setInterval(loadPrice, 5000);
     updateStatus(true);
     initPnlCalc();
 });
+
+async function loadVersion() {
+    try {
+        const res = await fetch("/api/version");
+        const data = await res.json();
+        document.getElementById("currentVersion").textContent = "v" + data.current;
+        if (data.latest) {
+            document.getElementById("latestVersion").textContent = "v" + data.latest;
+        }
+        if (data.available) {
+            document.getElementById("btnApplyUpdate").style.display = "inline-flex";
+            showUpdateStatus("有新版本可用", "info");
+        }
+        if (data.updating) {
+            document.getElementById("btnApplyUpdate").style.display = "inline-flex";
+            showUpdateStatus(data.message, "info");
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function checkUpdate() {
+    document.getElementById("btnCheckUpdate").disabled = true;
+    document.getElementById("btnCheckUpdate").textContent = "检查中...";
+    try {
+        const res = await fetch("/api/update/check", { method: "POST" });
+        const data = await res.json();
+        showUpdateStatus(data.msg, data.ok ? "success" : "error");
+        if (data.ok) {
+            const versionRes = await fetch("/api/version");
+            const versionData = await versionRes.json();
+            document.getElementById("latestVersion").textContent = "v" + versionData.latest;
+            if (versionData.available) {
+                document.getElementById("btnApplyUpdate").style.display = "inline-flex";
+            }
+        }
+    } catch (e) {
+        showUpdateStatus("检查失败", "error");
+    }
+    document.getElementById("btnCheckUpdate").disabled = false;
+    document.getElementById("btnCheckUpdate").textContent = "检查更新";
+}
+
+async function applyUpdate() {
+    if (!confirm("确定要更新吗？更新过程中服务将短暂中断。")) return;
+    document.getElementById("btnApplyUpdate").disabled = true;
+    showUpdateStatus("正在更新...", "info");
+    try {
+        const res = await fetch("/api/update/apply", { method: "POST" });
+        const data = await res.json();
+        showUpdateStatus(data.msg, data.ok ? "info" : "error");
+    } catch (e) {
+        showUpdateStatus("更新请求失败", "error");
+    }
+}
+
+function showUpdateStatus(msg, type) {
+    const el = document.getElementById("updateStatus");
+    el.textContent = msg;
+    el.className = "update-status show " + type;
+}
 
 function initPnlCalc() {
     const priceEl = document.getElementById("buyPrice");

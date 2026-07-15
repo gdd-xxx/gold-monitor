@@ -1,6 +1,7 @@
-import atexit
+import atexit, subprocess, threading
 from flask import Flask, render_template, jsonify, request
 from apscheduler.schedulers.background import BackgroundScheduler
+import requests
 import datetime
 
 from .models import init_db, insert_price, get_today_prices, get_daily_prices_for_chart, get_latest_price
@@ -8,11 +9,13 @@ from .gold_price import get_current_price, calculate_pnl
 from .config import load_config, save_config
 from .notifier import push_all, push_qq, build_price_alert_content, build_pnl_content
 from .chat import parse_chat_command
+from .version import VERSION, GITHUB_REPO, IMAGE_NAME
 
 app = Flask(__name__)
 
 scheduler = BackgroundScheduler()
 last_alert_price = {"price": None}
+_update_status = {"checking": False, "available": False, "latest": "", "updating": False, "message": ""}
 
 def scheduled_fetch():
     try:
@@ -41,6 +44,99 @@ def scheduled_fetch():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/api/version")
+def api_version():
+    return jsonify({
+        "current": VERSION,
+        "latest": _update_status.get("latest", ""),
+        "available": _update_status.get("available", False),
+        "updating": _update_status.get("updating", False),
+        "message": _update_status.get("message", ""),
+    })
+
+@app.route("/api/update/check", methods=["POST"])
+def api_update_check():
+    if _update_status["checking"]:
+        return jsonify({"ok": False, "msg": "正在检查..."})
+    _update_status["checking"] = True
+    _update_status["message"] = "检查更新中..."
+    try:
+        resp = requests.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+            timeout=10,
+            headers={"Accept": "application/vnd.github.v3+json"}
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            tag = data.get("tag_name", "").lstrip("v")
+            _update_status["latest"] = tag
+            _update_status["available"] = tag != VERSION
+            _update_status["message"] = f"最新版本: {tag}" if tag != VERSION else "已是最新版本"
+        else:
+            _update_status["message"] = "检查失败"
+    except Exception as e:
+        _update_status["message"] = f"检查出错: {e}"
+    finally:
+        _update_status["checking"] = False
+    return jsonify({"ok": True, "msg": _update_status["message"]})
+
+@app.route("/api/update/apply", methods=["POST"])
+def api_update_apply():
+    if _update_status["updating"]:
+        return jsonify({"ok": False, "msg": "更新中..."})
+    if not _update_status["available"]:
+        return jsonify({"ok": False, "msg": "没有可用更新"})
+
+    _update_status["updating"] = True
+    _update_status["message"] = "正在拉取新镜像..."
+
+    def do_update():
+        try:
+            tag = _update_status["latest"] or "latest"
+            full_image = f"{IMAGE_NAME}:{tag}"
+
+            print(f"[Update] 拉取镜像: {full_image}")
+            result = subprocess.run(
+                ["docker", "pull", full_image],
+                capture_output=True, text=True, timeout=300
+            )
+            if result.returncode != 0:
+                _update_status["message"] = f"拉取失败: {result.stderr[:200]}"
+                _update_status["updating"] = False
+                return
+
+            _update_status["message"] = "重启容器中..."
+            print("[Update] 重启容器...")
+
+            container_name = os.environ.get("HOSTNAME", "gold-monitor")
+            subprocess.run(["docker", "stop", container_name], timeout=30)
+            subprocess.run(["docker", "rm", container_name], timeout=30)
+
+            cfg = load_config()
+            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
+            run_cmd = [
+                "docker", "run", "-d",
+                "--name", container_name,
+                "-p", "5000:5000",
+                "-v", f"{data_dir}:/app/data",
+                "--restart", "unless-stopped",
+                full_image
+            ]
+            subprocess.run(run_cmd, timeout=60)
+
+            _update_status["message"] = "更新完成，重启中..."
+            print("[Update] 更新完成")
+
+        except Exception as e:
+            _update_status["message"] = f"更新失败: {e}"
+            print(f"[Update] Error: {e}")
+        finally:
+            _update_status["updating"] = False
+
+    threading.Thread(target=do_update, daemon=True).start()
+    return jsonify({"ok": True, "msg": "开始更新..."})
 
 @app.route("/api/price")
 def api_price():
@@ -176,49 +272,6 @@ def api_push_test():
     else:
         return jsonify({"ok": False, "msg": "未知渠道"})
     return jsonify({"ok": ok, "msg": msg})
-
-@app.route("/webhook/qq", methods=["POST"])
-def qq_webhook():
-    data = request.json
-    print(f"[QQ Webhook] {data}")
-
-    if data.get("op") == 0:
-        return jsonify({"op": 1})
-
-    if data.get("type") == 0:
-        msg_type = data.get("message_type", "")
-        user_id = data.get("user_id", "")
-        group_id = data.get("group_id", "")
-        content = data.get("content", "").strip()
-
-        handled, response = parse_chat_command(content)
-        if not handled:
-            return jsonify({})
-
-        if response == "__QUERY_PRICE__":
-            price, source = get_current_price()
-            response = f"当前金价：{price}元/克"
-        elif response == "__QUERY_PNL__":
-            cfg = load_config()
-            current = get_latest_price()
-            cp = current["price"] if current else 0
-            response = build_pnl_content(cfg.get("my_purchases", []), cp)
-
-        cfg = load_config()
-        qq = cfg.get("push_channels", {}).get("qq_bot", {})
-        app_id = qq.get("app_id", "")
-        app_secret = qq.get("app_secret", "")
-
-        if app_id and app_secret:
-            from .notifier import _get_qq_access_token
-            access_token = _get_qq_access_token(app_id, app_secret)
-            if access_token:
-                from .notifier import _qq_send_message
-                chat_id = group_id if group_id else user_id
-                chat_type = "group" if group_id else "c2c"
-                _qq_send_message(app_id, access_token, chat_id, chat_type, response)
-
-    return jsonify({})
 
 def _shutdown_scheduler():
     if scheduler.running:
