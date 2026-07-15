@@ -1,11 +1,10 @@
-import asyncio
 import botpy
 from botpy import logging
 from botpy.types.message import Message
 from .config import load_config, save_config
 from .gold_price import get_current_price
 from .chat import parse_chat_command
-from .notifier import _qq_send_message, _strip_markdown, build_pnl_content
+from .notifier import _strip_markdown, build_pnl_content
 from .models import get_latest_price
 
 _logger = logging.get_logger()
@@ -15,22 +14,33 @@ class GoldBotClient(botpy.Client):
         _logger.info(f"[QQBot] 机器人已上线: {self.robot.name}")
 
     async def on_at_message_create(self, message: Message):
-        await self._handle(message)
+        _logger.info(f"[QQBot] on_at_message_create: {message.content}")
+        await self._handle(message, "channel")
+
+    async def on_message_create(self, message: Message):
+        _logger.info(f"[QQBot] on_message_create: {message.content}")
+        await self._handle(message, "channel")
 
     async def on_dms_create(self, message: Message):
-        await self._handle(message)
+        _logger.info(f"[QQBot] on_dms_create: {message.content}")
+        await self._handle(message, "dms")
 
-    async def _handle(self, message: Message):
+    async def on_c2c_message_create(self, message: Message):
+        _logger.info(f"[QQBot] on_c2c_message_create: {message.content}")
+        await self._handle(message, "c2c")
+
+    async def _handle(self, message: Message, msg_type: str):
         content = message.content.strip()
         if not content:
             return
 
-        guild_id = getattr(message, "guild_id", "")
-        channel_id = getattr(message, "channel_id", "")
-        user_id = getattr(message, "author", {}).get("id", "")
-        user_name = getattr(message, "author", {}).get("username", "")
+        channel_id = getattr(message, "channel_id", "") or ""
+        user_id = getattr(message, "author", {}).get("id", "") or ""
+        user_name = getattr(message, "author", {}).get("username", "") or ""
+        msg_id = getattr(message, "id", "") or ""
+        guild_id = getattr(message, "guild_id", "") or ""
 
-        _logger.info(f"[QQBot] 收到消息: {content} (from {user_name})")
+        _logger.info(f"[QQBot] msg_type={msg_type}, guild={guild_id}, channel={channel_id}, user={user_name}({user_id})")
 
         cfg = load_config()
         qq = cfg.setdefault("push_channels", {}).setdefault("qq_bot", {})
@@ -62,24 +72,22 @@ class GoldBotClient(botpy.Client):
         plain = _strip_markdown(response)
 
         try:
-            if channel_id:
-                await self.api.post_message(channel_id=channel_id, content=plain)
+            if msg_type == "channel" and channel_id:
+                await self.api.post_message(channel_id=channel_id, content=plain, msg_id=msg_id)
             elif user_id:
-                await self.api.post_dms(user_id=user_id, content=plain)
+                if msg_type == "dms":
+                    await self.api.post_dms(user_id=user_id, content=plain, msg_id=msg_id)
+                else:
+                    await self.api.post_c2c_message(user_id=user_id, content=plain, msg_id=msg_id)
+            _logger.info(f"[QQBot] 回复成功")
         except Exception as e:
             _logger.error(f"[QQBot] 回复失败: {e}")
 
 _bot_thread = None
-_bot_loop = None
 _bot_client = None
 
 def _run_bot():
     global _bot_client
-    try:
-        import nest_asyncio
-        nest_asyncio.apply()
-    except ImportError:
-        pass
 
     cfg = load_config()
     qq = cfg.get("push_channels", {}).get("qq_bot", {})
@@ -90,21 +98,29 @@ def _run_bot():
         _logger.warning("[QQBot] AppID或Token未配置")
         return
 
+    _logger.info(f"[QQBot] 启动中... appid={app_id[:6]}...")
+
     intents = botpy.Intents(
         public_guild_messages=True,
         direct_message=True,
+        guild_messages=True,
     )
     _bot_client = GoldBotClient(intents=intents)
-    _bot_client.run(appid=app_id, token=token)
+
+    try:
+        _bot_client.run(appid=app_id, token=token)
+    except Exception as e:
+        _logger.error(f"[QQBot] 运行异常: {e}")
 
 def start_bot():
     global _bot_thread
     if _bot_thread and _bot_thread.is_alive():
+        _logger.info("[QQBot] 已在运行")
         return
     import threading
-    _bot_thread = threading.Thread(target=_run_bot, daemon=True)
+    _bot_thread = threading.Thread(target=_run_bot, daemon=True, name="qqbot")
     _bot_thread.start()
-    _logger.info("[QQBot] 启动线程已创建")
+    _logger.info("[QQBot] 线程已启动")
 
 def stop_bot():
     if _bot_client:
