@@ -1,46 +1,47 @@
-import requests, re, json, datetime, random
+import requests, re, json
 from .config import load_config
 
 def fetch_czbank_price():
     """Fetch gold price from 浙商银行"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Referer": "https://www.czbank.com/",
+    }
+
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Referer": "https://www.czbank.com/",
-        }
         resp = requests.get("https://www.czbank.com/gold/query", headers=headers, timeout=10)
         resp.encoding = "utf-8"
-        text = resp.text
-
-        price_match = re.search(r'(\d{3,4}\.\d{2})', text)
-        if price_match:
-            return float(price_match.group(1))
-
-        alt_urls = [
-            "https://www.czbank.com/channel/goldPrice",
-            "https://gold.czbank.com/gold/query",
-        ]
-        for url in alt_urls:
-            try:
-                resp = requests.get(url, headers=headers, timeout=10)
-                resp.encoding = "utf-8"
-                price_match = re.search(r'(\d{3,4}\.\d{2})', resp.text)
-                if price_match:
-                    return float(price_match.group(1))
-            except Exception:
-                continue
-
-        return _fetch_fallback_price()
+        prices = re.findall(r'(\d{3,4}\.\d{2})', resp.text)
+        if prices:
+            return float(prices[0])
     except Exception as e:
-        print(f"[GoldPrice] CZBank fetch error: {e}")
-        return _fetch_fallback_price()
+        print(f"[GoldPrice] CZBank primary error: {e}")
+
+    alt_urls = [
+        "https://www.czbank.com/channel/goldPrice",
+        "https://gold.czbank.com/gold/query",
+    ]
+    for url in alt_urls:
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.encoding = "utf-8"
+            prices = re.findall(r'(\d{3,4}\.\d{2})', resp.text)
+            if prices:
+                return float(prices[0])
+        except Exception:
+            continue
+
+    return _fetch_fallback_price()
 
 def _fetch_fallback_price():
     """Fallback: try SGE (上海黄金交易所)"""
     try:
-        resp = requests.get("https://www.sge.com.cn/sjzx/mrhqsj", timeout=10)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+        resp = requests.get("https://www.sge.com.cn/sjzx/mrhqsj", headers=headers, timeout=10)
         resp.encoding = "utf-8"
         prices = re.findall(r'(\d{3,4}\.\d{2})', resp.text)
         if prices:

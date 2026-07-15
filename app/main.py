@@ -1,4 +1,4 @@
-import atexit, signal, sys
+import atexit
 from flask import Flask, render_template, jsonify, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import datetime
@@ -124,6 +124,19 @@ def api_config_push():
         return jsonify({"ok": True})
     return jsonify(cfg.get("push_channels", {}))
 
+@app.route("/api/config/interval", methods=["POST"])
+def api_config_interval():
+    data = request.json
+    interval = max(30, int(data.get("interval", 60)))
+    cfg = load_config()
+    cfg["fetch_interval"] = interval
+    save_config(cfg)
+    try:
+        scheduler.reschedule_job("fetch_gold", trigger="interval", seconds=interval)
+    except Exception:
+        pass
+    return jsonify({"ok": True, "interval": interval})
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     data = request.json
@@ -165,7 +178,9 @@ def _shutdown_scheduler():
 
 def create_app():
     init_db()
-    scheduler.add_job(scheduled_fetch, "interval", seconds=60, id="fetch_gold")
+    cfg = load_config()
+    interval = cfg.get("fetch_interval", 60)
+    scheduler.add_job(scheduled_fetch, "interval", seconds=interval, id="fetch_gold")
     scheduler.start()
     scheduled_fetch()
     atexit.register(_shutdown_scheduler)

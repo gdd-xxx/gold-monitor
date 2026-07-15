@@ -1,30 +1,41 @@
 let goldChart = null;
+let priceHistory = [];
+let refreshTimer = null;
+let currentInterval = 60;
 
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    initTabs();
     loadPrice();
     refreshChart();
     loadTodayPrices();
     loadPnl();
     loadConfig();
-    setInterval(loadPrice, 30000);
+    setInterval(loadPrice, 5000);
+    updateStatus(true);
 });
 
-function initTabs() {
-    document.querySelectorAll(".tab").forEach(tab => {
-        tab.addEventListener("click", () => {
-            document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-            document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-            tab.classList.add("active");
-            document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
-        });
-    });
+function switchTab(name) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    document.querySelector(`.nav-item[data-tab="${name}"]`).classList.add('active');
+}
+
+function setChartRange(days, el) {
+    document.querySelectorAll('.chart-controls .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    refreshChart(days);
+}
+
+function setInterval_(seconds, el) {
+    document.querySelectorAll('.interval-control .chip').forEach(c => c.classList.remove('active'));
+    if (el) el.classList.add('active');
+    document.getElementById('customInterval').value = '';
+    currentInterval = seconds;
 }
 
 async function loadPrice() {
@@ -32,15 +43,41 @@ async function loadPrice() {
         const res = await fetch("/api/price");
         const data = await res.json();
         if (data.price) {
-            document.getElementById("currentPrice").textContent = data.price.toFixed(2) + " 元/克";
-            document.getElementById("priceTime").textContent =
-                data.time.replace("T", " ").substring(0, 19) + " (" + data.source + ")";
+            const prev = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1] : null;
+            priceHistory.push(data.price);
+            if (priceHistory.length > 100) priceHistory.shift();
+
+            document.getElementById("currentPrice").textContent = data.price.toFixed(2);
+            document.getElementById("priceTime").textContent = data.time.replace("T", " ").substring(0, 19);
+            document.getElementById("priceSource").textContent = data.source === 'czbank' ? '浙商银行' : data.source;
+
+            if (prev) {
+                const diff = data.price - prev;
+                const el = document.getElementById("priceChange");
+                el.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(2);
+                el.className = 'meta-value ' + (diff >= 0 ? 'up' : 'down');
+            }
+            updateStatus(true);
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        updateStatus(false);
+        console.error(e);
+    }
 }
 
-async function refreshChart() {
-    const days = parseInt(document.getElementById("chartDays").value);
+function updateStatus(online) {
+    const dot = document.getElementById("statusDot");
+    const text = document.getElementById("statusText");
+    if (online) {
+        dot.classList.add("online");
+        text.textContent = "运行中";
+    } else {
+        dot.classList.remove("online");
+        text.textContent = "连接失败";
+    }
+}
+
+async function refreshChart(days = 30) {
     try {
         const res = await fetch("/api/chart?days=" + days);
         const data = await res.json();
@@ -53,9 +90,13 @@ function renderChart(data, days) {
     if (goldChart) goldChart.destroy();
 
     const labels = data.map(d => d.date.substring(5));
-    const avgPrices = data.map(d => d.avg_price ? d.avg_price.toFixed(2) : null);
-    const highPrices = data.map(d => d.high ? d.high.toFixed(2) : null);
-    const lowPrices = data.map(d => d.low ? d.low.toFixed(2) : null);
+    const avgPrices = data.map(d => d.avg_price ? parseFloat(d.avg_price.toFixed(2)) : null);
+    const highPrices = data.map(d => d.high ? parseFloat(d.high.toFixed(2)) : null);
+    const lowPrices = data.map(d => d.low ? parseFloat(d.low.toFixed(2)) : null);
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, 'rgba(240,185,11,0.2)');
+    gradient.addColorStop(1, 'rgba(240,185,11,0)');
 
     goldChart = new Chart(ctx, {
         type: "line",
@@ -65,49 +106,62 @@ function renderChart(data, days) {
                 {
                     label: "均价",
                     data: avgPrices,
-                    borderColor: "#ffd700",
-                    backgroundColor: "rgba(255,215,0,0.1)",
+                    borderColor: "#f0b90b",
+                    backgroundColor: gradient,
                     borderWidth: 2,
                     fill: true,
-                    tension: 0.3,
-                    pointRadius: days <= 7 ? 4 : 1,
+                    tension: 0.4,
+                    pointRadius: days <= 7 ? 4 : 0,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: "#f0b90b",
                 },
                 {
-                    label: "最高价",
+                    label: "最高",
                     data: highPrices,
-                    borderColor: "#2ed573",
+                    borderColor: "rgba(0,214,143,0.5)",
                     borderWidth: 1,
                     borderDash: [4, 4],
                     pointRadius: 0,
-                    tension: 0.3,
+                    tension: 0.4,
                 },
                 {
-                    label: "最低价",
+                    label: "最低",
                     data: lowPrices,
-                    borderColor: "#ff4757",
+                    borderColor: "rgba(255,71,87,0.5)",
                     borderWidth: 1,
                     borderDash: [4, 4],
                     pointRadius: 0,
-                    tension: 0.3,
+                    tension: 0.4,
                 },
             ],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
             plugins: {
-                legend: { labels: { color: "#aaa", font: { size: 11 } } },
+                legend: { display: false },
                 tooltip: {
+                    backgroundColor: '#1a1a25',
+                    titleColor: '#9999aa',
+                    bodyColor: '#e8e8ed',
+                    borderColor: '#2a2a38',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
                     callbacks: {
                         label: ctx => ctx.dataset.label + ": " + ctx.parsed.y + " 元/克"
                     }
                 }
             },
             scales: {
-                x: { ticks: { color: "#666", maxRotation: 45 }, grid: { color: "#222" } },
+                x: {
+                    ticks: { color: '#666678', maxRotation: 0, font: { size: 11 } },
+                    grid: { color: 'rgba(42,42,56,0.5)', drawBorder: false }
+                },
                 y: {
-                    ticks: { color: "#666", callback: v => v + "元" },
-                    grid: { color: "#222" },
+                    ticks: { color: '#666678', font: { size: 11 }, callback: v => v + '' },
+                    grid: { color: 'rgba(42,42,56,0.5)', drawBorder: false },
                 },
             },
         },
@@ -119,13 +173,15 @@ async function loadTodayPrices() {
         const res = await fetch("/api/today");
         const data = await res.json();
         const el = document.getElementById("todayPrices");
+        const countEl = document.getElementById("recordCount");
+        countEl.textContent = data.length + "条";
         if (data.length === 0) {
-            el.innerHTML = "<h4>今日金价</h4><p style='color:#666'>暂无数据</p>";
+            el.innerHTML = '<div class="empty-state">暂无数据</div>';
             return;
         }
-        let html = "<h4>今日金价 (" + data.length + "条)</h4>";
+        let html = "";
         data.forEach(p => {
-            html += `<div class="price-item"><span>${p.time}</span><span>${p.price} 元/克</span></div>`;
+            html += `<div class="record-item"><span class="record-time">${p.time}</span><span class="record-price">${p.price} 元/克</span></div>`;
         });
         el.innerHTML = html;
     } catch (e) { console.error(e); }
@@ -137,30 +193,31 @@ async function loadPnl() {
         const data = await res.json();
         const el = document.getElementById("pnlResults");
         if (!data.purchases || data.purchases.length === 0) {
-            el.innerHTML = "<div class='pnl-card'><p style='color:#666'>暂无买入记录</p></div>";
+            el.innerHTML = '<div class="empty-state" style="margin-top:16px">暂无买入记录</div>';
             return;
         }
         let html = "";
         data.purchases.forEach((p, i) => {
             const isProfit = p.pnl >= 0;
+            const sign = isProfit ? '+' : '';
             html += `
             <div class="pnl-card ${isProfit ? 'profit' : 'loss'}">
                 <div class="pnl-header">
                     <div>
-                        <strong>${escapeHtml(p.note) || '记录 #' + (i+1)}</strong>
+                        <div class="pnl-title">${escapeHtml(p.note) || '记录 #' + (i+1)}</div>
                         <div class="pnl-detail">
-                            <span>买入: ${p.purchase_price}元/克</span>
-                            <span>手续费: ${p.fee}%</span>
+                            <span>买入 ${p.purchase_price}元/克</span>
+                            <span>手续费 ${p.fee}%</span>
                         </div>
                     </div>
                     <div class="pnl-value ${isProfit ? 'profit' : 'loss'}">
-                        ${isProfit ? '+' : ''}${p.pnl}元/克
+                        ${sign}${p.pnl}元/克
                     </div>
                 </div>
                 <div class="pnl-detail">
-                    <span>当前价: ${p.current_price}元/克</span>
-                    <span>盈亏比: ${isProfit ? '+' : ''}${p.pnl_percent}%</span>
-                    <button onclick="deletePnl(${i})" class="btn btn-sm btn-danger">删除</button>
+                    <span>当前价 ${p.current_price}元/克</span>
+                    <span>${sign}${p.pnl_percent}%</span>
+                    <span style="margin-left:auto;cursor:pointer;color:var(--red)" onclick="deletePnl(${i})">删除</span>
                 </div>
             </div>`;
         });
@@ -181,7 +238,7 @@ async function addPurchase() {
     document.getElementById("buyPrice").value = "";
     document.getElementById("buyNote").value = "";
     loadPnl();
-    showToast("已添加买入记录");
+    showToast("已添加");
 }
 
 async function deletePnl(idx) {
@@ -202,6 +259,10 @@ async function loadConfig() {
         document.getElementById("alertEnabled").checked = cfg.alert_enabled || false;
         document.getElementById("alertLow").value = cfg.alert_threshold_low ?? "";
         document.getElementById("alertHigh").value = cfg.alert_threshold_high ?? "";
+        if (cfg.fetch_interval) {
+            currentInterval = cfg.fetch_interval;
+            updateIntervalUI(cfg.fetch_interval);
+        }
     } catch (e) { console.error(e); }
 
     try {
@@ -216,16 +277,35 @@ async function loadConfig() {
     } catch (e) { console.error(e); }
 }
 
+function updateIntervalUI(seconds) {
+    document.querySelectorAll('.interval-control .chip').forEach(c => c.classList.remove('active'));
+    const map = {60:0, 300:1, 600:2, 1800:3};
+    if (map[seconds] !== undefined) {
+        document.querySelectorAll('.interval-control .chip')[map[seconds]].classList.add('active');
+        document.getElementById('customInterval').value = '';
+    } else {
+        document.getElementById('customInterval').value = seconds;
+    }
+}
+
 async function saveSourceSettings() {
+    const customVal = document.getElementById("customInterval").value;
+    const interval = customVal ? parseInt(customVal) : currentInterval;
     await fetch("/api/config", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
             use_custom_api: document.getElementById("useCustomApi").checked,
             custom_api_url: document.getElementById("customApiUrl").value,
+            fetch_interval: interval,
         })
     });
-    showToast("数据源设置已保存");
+    await fetch("/api/config/interval", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ interval })
+    });
+    showToast("设置已保存");
 }
 
 async function savePushSettings() {
@@ -271,7 +351,7 @@ async function testPush(channel) {
             body: JSON.stringify({ channel })
         });
         const data = await res.json();
-        showToast(data.ok ? "推送成功" : "推送失败: " + data.msg);
+        showToast(data.ok ? "推送成功" : "失败: " + data.msg);
     } catch (e) { showToast("测试失败"); }
 }
 
@@ -280,7 +360,6 @@ async function sendChat() {
     const text = input.value.trim();
     if (!text) return;
     input.value = "";
-
     addChatMsg(text, "user");
     try {
         const res = await fetch("/api/chat", {
@@ -309,5 +388,5 @@ function showToast(msg) {
     toast.className = "toast";
     toast.textContent = msg;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2200);
+    setTimeout(() => toast.remove(), 2000);
 }

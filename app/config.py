@@ -30,6 +30,7 @@ DEFAULT_CONFIG = {
         "qq_bot": {"app_id": "", "app_secret": "", "group_id": ""},
         "feishu_webhook": "",
     },
+    "fetch_interval": 60,
     "alert_threshold_low": 0,
     "alert_threshold_high": 9999,
     "alert_enabled": False,
