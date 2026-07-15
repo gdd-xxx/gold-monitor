@@ -29,10 +29,6 @@ class GoldBotClient(botpy.Client):
         _logger.info(f"[QQBot] on_c2c_message_create: {message.content}")
         await self._handle(message, "c2c")
 
-    async def on_group_at_message_create(self, message: Message):
-        _logger.info(f"[QQBot] on_group_at_message_create: {message.content}")
-        await self._handle(message, "group")
-
     async def _handle(self, message: Message, msg_type: str):
         content = message.content.strip()
         if not content:
@@ -120,7 +116,6 @@ def _run_bot():
         public_guild_messages=True,
         direct_message=True,
         guild_messages=True,
-        group_messages=True,
     )
     _bot_client = GoldBotClient(intents=intents)
 
