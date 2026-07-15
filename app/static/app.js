@@ -88,18 +88,35 @@ function initPnlCalc() {
     priceEl.addEventListener("input", () => {
         const p = parseFloat(priceEl.value) || 0;
         const w = parseFloat(weightEl.value) || 0;
-        if (p > 0 && w > 0) amountEl.value = (p * w).toFixed(2);
+        const a = parseFloat(amountEl.value) || 0;
+        if (p > 0 && w > 0) {
+            amountEl.value = (p * w).toFixed(2);
+        } else if (p > 0 && a > 0) {
+            weightEl.value = (a / p).toFixed(2);
+        }
     });
     weightEl.addEventListener("input", () => {
         const p = parseFloat(priceEl.value) || 0;
         const w = parseFloat(weightEl.value) || 0;
-        if (p > 0 && w > 0) amountEl.value = (p * w).toFixed(2);
+        const a = parseFloat(amountEl.value) || 0;
+        if (p > 0 && w > 0) {
+            amountEl.value = (p * w).toFixed(2);
+        } else if (w > 0 && a > 0) {
+            priceEl.value = (a / w).toFixed(2);
+        }
     });
     amountEl.addEventListener("input", () => {
-        const a = parseFloat(amountEl.value) || 0;
+        const p = parseFloat(priceEl.value) || 0;
         const w = parseFloat(weightEl.value) || 0;
-        if (a > 0 && w > 0) priceEl.value = (a / w).toFixed(2);
+        const a = parseFloat(amountEl.value) || 0;
+        if (p > 0 && a > 0) {
+            weightEl.value = (a / p).toFixed(2);
+        } else if (w > 0 && a > 0) {
+            priceEl.value = (a / w).toFixed(2);
+        }
     });
+
+    document.getElementById("buyPrice").value = document.getElementById("currentPrice").textContent.replace("元/克", "").trim() || "";
 }
 
 function switchTab(name) {

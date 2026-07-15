@@ -112,7 +112,7 @@ def _run_bot():
     _bot_client = GoldBotClient(intents=intents)
 
     try:
-        _bot_client.run(appid=app_id, token=token)
+        _bot_client.run(appid=app_id, secret=token)
     except Exception as e:
         _logger.error(f"[QQBot] 运行异常: {e}")
 
