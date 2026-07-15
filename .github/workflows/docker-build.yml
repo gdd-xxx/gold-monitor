@@ -8,15 +8,12 @@ on:
     branches: [main, master]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: crpi-emvv544kvrp3bd7n.cn-hangzhou.personal.cr.aliyuncs.com
+  IMAGE_NAME: xylsdocker/gold-monitor
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout
@@ -28,13 +25,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Login to Alibaba Cloud CR
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: aliyun9294136771
+          password: ${{ secrets.ALIYUN_CR_PASSWORD }}
 
       - name: Extract metadata
         id: meta
@@ -44,7 +41,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha
 
       - name: Build and push
