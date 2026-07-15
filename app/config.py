@@ -22,7 +22,7 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 DB_FILE = os.path.join(DATA_DIR, "gold.db")
 
 DEFAULT_CONFIG = {
-    "gold_api_url": "https://www.czbank.com/gold/query",
+    "gold_api_url": "https://api.jdjygold.com/gw2/generic/jrm/h5/m/stdLatestPrice?productSku=1961543816",
     "custom_api_url": "",
     "use_custom_api": False,
     "push_channels": {

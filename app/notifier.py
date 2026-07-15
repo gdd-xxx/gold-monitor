@@ -12,7 +12,10 @@ def _get_qq_access_token(app_id, app_secret):
             "clientSecret": app_secret,
         }, timeout=10)
         data = resp.json()
-        return data.get("access_token")
+        token = data.get("access_token")
+        if not token:
+            print(f"[Push] QQ token response: {data}")
+        return token
     except Exception as e:
         print(f"[Push] QQ token refresh error: {e}")
         return None
@@ -69,30 +72,31 @@ def push_qq(title, content):
     app_id = qq.get("app_id", "")
     app_secret = qq.get("app_secret", "")
     group_id = qq.get("group_id", "")
-    if not all([app_id, app_secret, group_id]):
-        return False, "QQ推送未配置"
+    if not app_id or not app_secret:
+        return False, "QQ推送未配置(需要AppID和AppSecret)"
 
     access_token = _get_qq_access_token(app_id, app_secret)
     if not access_token:
         return False, "QQ token获取失败"
 
-    try:
-        url = f"https://api.sgroup.qq.com/v2/groups/{group_id}/messages"
-        headers = {
-            "Authorization": f"QQBot {app_id}.{access_token}",
-            "Content-Type": "application/json",
-        }
-        plain_content = _strip_markdown(f"【{title}】\n{content}")
-        payload = {
-            "msg_type": 0,
-            "content": plain_content,
-        }
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
-        if resp.status_code in (200, 204):
-            return True, "推送成功"
-        return False, resp.text[:200]
-    except Exception as e:
-        return False, str(e)
+    plain_content = _strip_markdown(f"【{title}】\n{content}")
+
+    if group_id:
+        try:
+            url = f"https://api.sgroup.qq.com/v2/groups/{group_id}/messages"
+            headers = {
+                "Authorization": f"QQBot {app_id}.{access_token}",
+                "Content-Type": "application/json",
+            }
+            payload = {"msg_type": 0, "content": plain_content}
+            resp = requests.post(url, json=payload, headers=headers, timeout=10)
+            if resp.status_code in (200, 204):
+                return True, "推送成功"
+            return False, f"群消息失败: {resp.text[:200]}"
+        except Exception as e:
+            return False, str(e)
+
+    return False, "QQ推送需要配置群号"
 
 def push_all(title, content):
     cfg = load_config()

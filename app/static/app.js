@@ -49,7 +49,8 @@ async function loadPrice() {
 
             document.getElementById("currentPrice").textContent = data.price.toFixed(2);
             document.getElementById("priceTime").textContent = data.time.replace("T", " ").substring(0, 19);
-            document.getElementById("priceSource").textContent = data.source === 'czbank' ? '浙商银行' : data.source;
+            const sourceMap = { czbank: '浙商银行', jdjygold: '京东黄金', custom: '自定义' };
+            document.getElementById("priceSource").textContent = sourceMap[data.source] || data.source;
 
             if (prev) {
                 const diff = data.price - prev;
@@ -57,6 +58,7 @@ async function loadPrice() {
                 el.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(2);
                 el.className = 'meta-value ' + (diff >= 0 ? 'up' : 'down');
             }
+            loadPnl();
             updateStatus(true);
         }
     } catch (e) {
