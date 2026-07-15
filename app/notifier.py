@@ -1,11 +1,19 @@
-import requests, datetime
+import requests, datetime, json
 from .config import load_config
 from .gold_price import calculate_pnl
 
 QQ_TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken"
+QQ_API_BASE = "https://api.sgroup.qq.com"
+
+_token_cache = {}
 
 def _get_qq_access_token(app_id, app_secret):
-    """Get QQ Bot OAuth2 access token"""
+    """Get QQ Bot OAuth2 access token with caching"""
+    cache_key = app_id
+    cached = _token_cache.get(cache_key)
+    if cached and cached.get("expires_at", 0) > datetime.datetime.now().timestamp():
+        return cached.get("access_token")
+
     try:
         resp = requests.post(QQ_TOKEN_URL, json={
             "appId": app_id,
@@ -13,19 +21,55 @@ def _get_qq_access_token(app_id, app_secret):
         }, timeout=10)
         data = resp.json()
         token = data.get("access_token")
-        if not token:
-            print(f"[Push] QQ token response: {data}")
-        return token
+        expires_in = int(data.get("expires_in", 7200))
+        if token:
+            _token_cache[cache_key] = {
+                "access_token": token,
+                "expires_at": datetime.datetime.now().timestamp() + expires_in - 300,
+            }
+            print(f"[QQ] Token获取成功, 有效期{expires_in}秒")
+            return token
+        else:
+            print(f"[QQ] Token获取失败: {data}")
+            return None
     except Exception as e:
-        print(f"[Push] QQ token refresh error: {e}")
+        print(f"[QQ] Token请求异常: {e}")
         return None
 
 def _strip_markdown(text):
-    """Strip markdown formatting for plain-text channels (QQ)"""
+    """Strip markdown formatting for plain-text channels"""
     import re
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'^###?\s+', '', text, flags=re.MULTILINE)
     return text
+
+def _qq_send_message(app_id, access_token, chat_id, chat_type, content):
+    """Send message via QQ Bot API"""
+    if chat_type == "group":
+        url = f"{QQ_API_BASE}/v2/groups/{chat_id}/messages"
+    elif chat_type == "c2c":
+        url = f"{QQ_API_BASE}/v2/users/{chat_id}/messages"
+    else:
+        return False, f"不支持的聊天类型: {chat_type}"
+
+    headers = {
+        "Authorization": f"QQBot {app_id}.{access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {"msg_type": 0, "content": content}
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        if resp.status_code in (200, 204):
+            return True, "推送成功"
+        try:
+            err = resp.json()
+            msg = err.get("message", err.get("msg", resp.text[:200]))
+        except Exception:
+            msg = resp.text[:200]
+        return False, f"({resp.status_code}) {msg}"
+    except Exception as e:
+        return False, str(e)
 
 def push_wechat(title, content):
     cfg = load_config()
@@ -69,32 +113,21 @@ def push_feishu(title, content):
 def push_qq(title, content):
     cfg = load_config()
     qq = cfg.get("push_channels", {}).get("qq_bot", {})
-    app_id = qq.get("app_id", "")
-    app_secret = qq.get("app_secret", "")
-    group_id = qq.get("group_id", "")
+    app_id = qq.get("app_id", "").strip()
+    app_secret = qq.get("app_secret", "").strip()
+    group_id = qq.get("group_id", "").strip()
+
     if not app_id or not app_secret:
-        return False, "QQ推送未配置(需要AppID和AppSecret)"
+        return False, "QQ未配置(需AppID+AppSecret)"
 
     access_token = _get_qq_access_token(app_id, app_secret)
     if not access_token:
-        return False, "QQ token获取失败"
+        return False, "QQ Token获取失败, 请检查AppID和AppSecret"
 
     plain_content = _strip_markdown(f"【{title}】\n{content}")
 
     if group_id:
-        try:
-            url = f"https://api.sgroup.qq.com/v2/groups/{group_id}/messages"
-            headers = {
-                "Authorization": f"QQBot {app_id}.{access_token}",
-                "Content-Type": "application/json",
-            }
-            payload = {"msg_type": 0, "content": plain_content}
-            resp = requests.post(url, json=payload, headers=headers, timeout=10)
-            if resp.status_code in (200, 204):
-                return True, "推送成功"
-            return False, f"群消息失败: {resp.text[:200]}"
-        except Exception as e:
-            return False, str(e)
+        return _qq_send_message(app_id, access_token, group_id, "group", plain_content)
 
     return False, "QQ推送需要配置群号"
 
@@ -106,7 +139,8 @@ def push_all(title, content):
         results["微信"] = push_wechat(title, content)
     if channels.get("feishu_webhook"):
         results["飞书"] = push_feishu(title, content)
-    if channels.get("qq_bot", {}).get("app_id"):
+    qq = channels.get("qq_bot", {})
+    if qq.get("app_id") and qq.get("app_secret"):
         results["QQ"] = push_qq(title, content)
     for ch, (ok, msg) in results.items():
         if not ok:

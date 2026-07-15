@@ -1,4 +1,4 @@
-import atexit
+import atexit, hashlib, hmac
 from flask import Flask, render_template, jsonify, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import datetime
@@ -6,7 +6,7 @@ import datetime
 from .models import init_db, insert_price, get_today_prices, get_daily_prices_for_chart, get_latest_price
 from .gold_price import get_current_price, calculate_pnl
 from .config import load_config, save_config
-from .notifier import push_all, build_price_alert_content, build_pnl_content
+from .notifier import push_all, push_qq, build_price_alert_content, build_pnl_content
 from .chat import parse_chat_command
 
 app = Flask(__name__)
@@ -146,7 +146,8 @@ def api_chat():
         return jsonify({"handled": False, "response": "无法识别的命令，输入'帮助'查看可用命令"})
     if response == "__QUERY_PRICE__":
         price, source = get_current_price()
-        return jsonify({"handled": True, "response": f"当前金价：{price}元/克（{source}）"})
+        source_map = {"jdjygold": "京东黄金", "czbank": "浙商银行", "custom": "自定义"}
+        return jsonify({"handled": True, "response": f"当前金价：{price}元/克（{source_map.get(source, source)}）"})
     if response == "__QUERY_PNL__":
         cfg = load_config()
         current = get_latest_price()
@@ -171,6 +172,49 @@ def api_push_test():
     else:
         return jsonify({"ok": False, "msg": "未知渠道"})
     return jsonify({"ok": ok, "msg": msg})
+
+@app.route("/webhook/qq", methods=["POST"])
+def qq_webhook():
+    data = request.json
+    print(f"[QQ Webhook] {data}")
+
+    if data.get("op") == 0:
+        return jsonify({"op": 1})
+
+    if data.get("type") == 0:
+        msg_type = data.get("message_type", "")
+        user_id = data.get("user_id", "")
+        group_id = data.get("group_id", "")
+        content = data.get("content", "").strip()
+
+        handled, response = parse_chat_command(content)
+        if not handled:
+            return jsonify({})
+
+        if response == "__QUERY_PRICE__":
+            price, source = get_current_price()
+            response = f"当前金价：{price}元/克"
+        elif response == "__QUERY_PNL__":
+            cfg = load_config()
+            current = get_latest_price()
+            cp = current["price"] if current else 0
+            response = build_pnl_content(cfg.get("my_purchases", []), cp)
+
+        cfg = load_config()
+        qq = cfg.get("push_channels", {}).get("qq_bot", {})
+        app_id = qq.get("app_id", "")
+        app_secret = qq.get("app_secret", "")
+
+        if app_id and app_secret:
+            from .notifier import _get_qq_access_token
+            access_token = _get_qq_access_token(app_id, app_secret)
+            if access_token:
+                from .notifier import _qq_send_message
+                chat_id = group_id if group_id else user_id
+                chat_type = "group" if group_id else "c2c"
+                _qq_send_message(app_id, access_token, chat_id, chat_type, response)
+
+    return jsonify({})
 
 def _shutdown_scheduler():
     if scheduler.running:

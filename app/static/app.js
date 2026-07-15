@@ -320,7 +320,7 @@ async function savePushSettings() {
 
     if (wechat) payload.wechat_webhook = wechat;
     if (feishu) payload.feishu_webhook = feishu;
-    if (qqAppId && qqSecret && qqGroup) {
+    if (qqAppId && qqSecret) {
         payload.qq_bot = { app_id: qqAppId, app_secret: qqSecret, group_id: qqGroup };
     }
 
@@ -329,6 +329,15 @@ async function savePushSettings() {
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload)
     });
+
+    if (qqAppId) {
+        const webhookEl = document.getElementById("qqWebhookUrl");
+        const urlEl = document.getElementById("webhookUrl");
+        const host = window.location.origin;
+        urlEl.textContent = host + '/webhook/qq';
+        webhookEl.style.display = 'block';
+    }
+
     showToast("推送设置已保存");
 }
 
