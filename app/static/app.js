@@ -16,7 +16,30 @@ document.addEventListener("DOMContentLoaded", () => {
     loadConfig();
     setInterval(loadPrice, 5000);
     updateStatus(true);
+    initPnlCalc();
 });
+
+function initPnlCalc() {
+    const priceEl = document.getElementById("buyPrice");
+    const weightEl = document.getElementById("buyWeight");
+    const amountEl = document.getElementById("buyAmount");
+
+    priceEl.addEventListener("input", () => {
+        const p = parseFloat(priceEl.value) || 0;
+        const w = parseFloat(weightEl.value) || 0;
+        if (p > 0 && w > 0) amountEl.value = (p * w).toFixed(2);
+    });
+    weightEl.addEventListener("input", () => {
+        const p = parseFloat(priceEl.value) || 0;
+        const w = parseFloat(weightEl.value) || 0;
+        if (p > 0 && w > 0) amountEl.value = (p * w).toFixed(2);
+    });
+    amountEl.addEventListener("input", () => {
+        const a = parseFloat(amountEl.value) || 0;
+        const w = parseFloat(weightEl.value) || 0;
+        if (a > 0 && w > 0) priceEl.value = (a / w).toFixed(2);
+    });
+}
 
 function switchTab(name) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -202,14 +225,19 @@ async function loadPnl() {
         data.purchases.forEach((p, i) => {
             const isProfit = p.pnl >= 0;
             const sign = isProfit ? '+' : '';
+            const weight = p.weight || 0;
+            const amount = p.amount || (p.purchase_price * weight);
+            const totalPnl = (p.pnl * weight).toFixed(2);
             html += `
             <div class="pnl-card ${isProfit ? 'profit' : 'loss'}">
                 <div class="pnl-header">
                     <div>
                         <div class="pnl-title">${escapeHtml(p.note) || '记录 #' + (i+1)}</div>
                         <div class="pnl-detail">
-                            <span>买入 ${p.purchase_price}元/克</span>
-                            <span>手续费 ${p.fee}%</span>
+                            <span>${p.purchase_price}元/克</span>
+                            ${weight > 0 ? `<span>${weight}克</span>` : ''}
+                            ${amount > 0 ? `<span>共${amount.toFixed(2)}元</span>` : ''}
+                            <span>手续费${p.fee}%</span>
                         </div>
                     </div>
                     <div class="pnl-value ${isProfit ? 'profit' : 'loss'}">
@@ -219,6 +247,7 @@ async function loadPnl() {
                 <div class="pnl-detail">
                     <span>当前价 ${p.current_price}元/克</span>
                     <span>${sign}${p.pnl_percent}%</span>
+                    ${weight > 0 ? `<span>盈亏 ${sign}${totalPnl}元</span>` : ''}
                     <span style="margin-left:auto;cursor:pointer;color:var(--red)" onclick="deletePnl(${i})">删除</span>
                 </div>
             </div>`;
@@ -229,13 +258,21 @@ async function loadPnl() {
 
 async function addPurchase() {
     const price = document.getElementById("buyPrice").value;
+    const weight = document.getElementById("buyWeight").value || 0;
+    const amount = document.getElementById("buyAmount").value || 0;
     const fee = document.getElementById("buyFee").value || 0;
     const note = document.getElementById("buyNote").value;
     if (!price) { showToast("请输入买入金价"); return; }
     await fetch("/api/pnl", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ price: parseFloat(price), fee: parseFloat(fee), note })
+        body: JSON.stringify({
+            price: parseFloat(price),
+            weight: parseFloat(weight),
+            amount: parseFloat(amount),
+            fee: parseFloat(fee),
+            note
+        })
     });
     document.getElementById("buyPrice").value = "";
     document.getElementById("buyNote").value = "";

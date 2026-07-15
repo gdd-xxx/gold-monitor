@@ -70,6 +70,8 @@ def api_pnl():
         else:
             purchase = {
                 "price": float(data["price"]),
+                "weight": float(data.get("weight", 0)),
+                "amount": float(data.get("amount", 0)),
                 "fee": float(data.get("fee", 0)),
                 "note": data.get("note", ""),
             }
@@ -85,6 +87,8 @@ def api_pnl():
         pnl, pct = calculate_pnl(p["price"], current_price, p.get("fee", 0))
         results.append({
             "purchase_price": p["price"],
+            "weight": p.get("weight", 0),
+            "amount": p.get("amount", 0),
             "fee": p.get("fee", 0),
             "note": p.get("note", ""),
             "pnl": pnl,
