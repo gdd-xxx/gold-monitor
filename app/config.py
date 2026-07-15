@@ -10,11 +10,12 @@ def _get_data_dir():
         with open(test_file, "w") as f:
             f.write("ok")
         os.remove(test_file)
+        print(f"[Config] 使用数据目录: {primary}")
         return primary
-    except (PermissionError, OSError):
+    except (PermissionError, OSError) as e:
         fallback = os.path.join(tempfile.gettempdir(), "gold-monitor-data")
         os.makedirs(fallback, exist_ok=True)
-        print(f"[Config] data目录不可写，使用临时目录: {fallback}")
+        print(f"[Config] data目录不可写({e})，使用临时目录: {fallback}")
         return fallback
 
 DATA_DIR = _get_data_dir()
