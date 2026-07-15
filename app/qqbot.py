@@ -3,7 +3,7 @@ import websocket
 from .config import load_config
 from .gold_price import get_current_price
 from .chat import parse_chat_command
-from .notifier import _get_qq_access_token, _qq_send_message, _strip_markdown, build_pnl_content
+from .notifier import _qq_send_message, _strip_markdown, build_pnl_content
 from .models import get_latest_price
 
 WS_URL = "wss://api.sgroup.qq.com/websocket"
@@ -27,8 +27,8 @@ class QQBot:
         cfg = load_config()
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
         app_id = qq.get("app_id", "").strip()
-        app_secret = qq.get("app_secret", "").strip()
-        if not app_id or not app_secret:
+        token = qq.get("token", "").strip()
+        if not app_id or not token:
             return
         self.running = True
         self._stop_event.clear()
@@ -58,11 +58,10 @@ class QQBot:
         cfg = load_config()
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
         app_id = qq.get("app_id", "").strip()
-        app_secret = qq.get("app_secret", "").strip()
+        token = qq.get("token", "").strip()
 
-        access_token = _get_qq_access_token(app_id, app_secret)
-        if not access_token:
-            print("[QQBot] Token获取失败，5秒后重试")
+        if not app_id or not token:
+            print("[QQBot] AppID或Token未配置")
             return
 
         self.heartbeat_ack = True
@@ -76,7 +75,7 @@ class QQBot:
             on_close=self._on_close,
         )
         self.ws._app_id = app_id
-        self.ws._access_token = access_token
+        self.ws._token = token
         self.ws.run_forever(ping_interval=0, ping_timeout=0)
 
     def _on_open(self, ws):
@@ -140,13 +139,10 @@ class QQBot:
         self.heartbeat_thread.start()
 
     def _identify(self, ws):
-        cfg = load_config()
-        qq = cfg.get("push_channels", {}).get("qq_bot", {})
-        app_id = qq.get("app_id", "").strip()
         payload = {
             "op": 2,
             "d": {
-                "token": ws._access_token,
+                "token": ws._token,
                 "intents": 513,
                 "shard": [0, 1],
                 "properties": {
@@ -164,7 +160,6 @@ class QQBot:
 
     def _handle_message(self, data):
         content = data.get("content", "").strip()
-        msg_id = data.get("id", "")
         author = data.get("author", {})
         user_id = author.get("id", "")
         user_name = author.get("username", "")
@@ -197,20 +192,18 @@ class QQBot:
         cfg = load_config()
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
         app_id = qq.get("app_id", "").strip()
-        app_secret = qq.get("app_secret", "").strip()
-        access_token = _get_qq_access_token(app_id, app_secret)
+        token = qq.get("token", "").strip()
 
-        if not access_token:
-            print("[QQBot] 无法获取token来回复消息")
+        if not app_id or not token:
             return
 
         plain = _strip_markdown(response)
 
         if group_id:
-            _qq_send_message(app_id, access_token, group_id, "group", plain)
+            _qq_send_message(app_id, token, group_id, "group", plain)
         elif channel_id:
-            _qq_send_message(app_id, access_token, channel_id, "channel", plain)
+            _qq_send_message(app_id, token, channel_id, "channel", plain)
         elif user_id:
-            _qq_send_message(app_id, access_token, user_id, "c2c", plain)
+            _qq_send_message(app_id, token, user_id, "c2c", plain)
 
 qqbot = QQBot()

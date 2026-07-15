@@ -28,7 +28,7 @@ DEFAULT_CONFIG = {
     "use_custom_api": False,
     "push_channels": {
         "wechat_webhook": "",
-        "qq_bot": {"app_id": "", "app_secret": "", "group_id": ""},
+        "qq_bot": {"app_id": "", "token": "", "group_id": ""},
         "feishu_webhook": "",
     },
     "fetch_interval": 60,
@@ -45,6 +45,10 @@ def load_config():
         for k, v in DEFAULT_CONFIG.items():
             if k not in cfg:
                 cfg[k] = v
+        if "push_channels" in cfg:
+            qq = cfg["push_channels"].get("qq_bot", {})
+            if "app_secret" in qq and "token" not in qq:
+                qq["token"] = qq.pop("app_secret")
         return cfg
     return DEFAULT_CONFIG.copy()
 

@@ -311,7 +311,7 @@ async function loadConfig() {
         document.getElementById("feishuWebhook").value = pc.feishu_webhook || "";
         const qq = pc.qq_bot || {};
         document.getElementById("qqAppId").value = qq.app_id || "";
-        document.getElementById("qqToken").value = qq.app_secret || "";
+        document.getElementById("qqToken").value = qq.token || qq.app_secret || "";
         document.getElementById("qqGroupId").value = qq.group_id || "";
     } catch (e) { console.error(e); }
 }
@@ -352,13 +352,13 @@ async function savePushSettings() {
     const wechat = document.getElementById("wechatWebhook").value.trim();
     const feishu = document.getElementById("feishuWebhook").value.trim();
     const qqAppId = document.getElementById("qqAppId").value.trim();
-    const qqSecret = document.getElementById("qqToken").value.trim();
+    const qqToken = document.getElementById("qqToken").value.trim();
     const qqGroup = document.getElementById("qqGroupId").value.trim();
 
     if (wechat) payload.wechat_webhook = wechat;
     if (feishu) payload.feishu_webhook = feishu;
-    if (qqAppId && qqSecret) {
-        payload.qq_bot = { app_id: qqAppId, app_secret: qqSecret, group_id: qqGroup };
+    if (qqAppId && qqToken) {
+        payload.qq_bot = { app_id: qqAppId, token: qqToken, group_id: qqGroup };
     }
 
     await fetch("/api/config/push", {
@@ -366,14 +366,6 @@ async function savePushSettings() {
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload)
     });
-
-    if (qqAppId) {
-        const webhookEl = document.getElementById("qqWebhookUrl");
-        const urlEl = document.getElementById("webhookUrl");
-        const host = window.location.origin;
-        urlEl.textContent = host + '/webhook/qq';
-        webhookEl.style.display = 'block';
-    }
 
     showToast("推送设置已保存");
 }
