@@ -88,6 +88,7 @@ _bot_client = None
 
 def _run_bot():
     global _bot_client
+    import asyncio
 
     cfg = load_config()
     qq = cfg.get("push_channels", {}).get("qq_bot", {})
@@ -99,6 +100,9 @@ def _run_bot():
         return
 
     _logger.info(f"[QQBot] 启动中... appid={app_id[:6]}...")
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     intents = botpy.Intents(
         public_guild_messages=True,
