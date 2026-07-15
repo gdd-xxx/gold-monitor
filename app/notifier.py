@@ -13,9 +13,7 @@ def _strip_markdown(text):
 
 def _qq_send_message(app_id, token, chat_id, chat_type, content):
     """Send message via QQ Bot API"""
-    if chat_type == "group":
-        url = f"{QQ_API_BASE}/v2/groups/{chat_id}/messages"
-    elif chat_type == "c2c":
+    if chat_type == "c2c":
         url = f"{QQ_API_BASE}/v2/users/{chat_id}/messages"
     elif chat_type == "channel":
         url = f"{QQ_API_BASE}/channels/{chat_id}/messages"
@@ -85,17 +83,21 @@ def push_qq(title, content):
     qq = cfg.get("push_channels", {}).get("qq_bot", {})
     app_id = qq.get("app_id", "").strip()
     token = qq.get("token", "").strip()
-    group_id = qq.get("group_id", "").strip()
 
     if not app_id or not token:
         return False, "QQ未配置(需AppID+Token)"
 
+    user_id = qq.get("user_id", "").strip()
+    channel_id = qq.get("channel_id", "").strip()
+
     plain_content = _strip_markdown(f"【{title}】\n{content}")
 
-    if group_id:
-        return _qq_send_message(app_id, token, group_id, "group", plain_content)
+    if user_id:
+        return _qq_send_message(app_id, token, user_id, "c2c", plain_content)
+    if channel_id:
+        return _qq_send_message(app_id, token, channel_id, "channel", plain_content)
 
-    return False, "QQ推送需要配置群号"
+    return False, "QQ推送需要配置用户ID或频道ID"
 
 def push_all(title, content):
     cfg = load_config()

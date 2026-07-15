@@ -312,7 +312,8 @@ async function loadConfig() {
         const qq = pc.qq_bot || {};
         document.getElementById("qqAppId").value = qq.app_id || "";
         document.getElementById("qqToken").value = qq.token || qq.app_secret || "";
-        document.getElementById("qqGroupId").value = qq.group_id || "";
+        document.getElementById("qqUserId").value = qq.user_id || "";
+        document.getElementById("qqChannelId").value = qq.channel_id || "";
     } catch (e) { console.error(e); }
 }
 
@@ -353,12 +354,18 @@ async function savePushSettings() {
     const feishu = document.getElementById("feishuWebhook").value.trim();
     const qqAppId = document.getElementById("qqAppId").value.trim();
     const qqToken = document.getElementById("qqToken").value.trim();
-    const qqGroup = document.getElementById("qqGroupId").value.trim();
+    const qqUserId = document.getElementById("qqUserId").value.trim();
+    const qqChannelId = document.getElementById("qqChannelId").value.trim();
 
     if (wechat) payload.wechat_webhook = wechat;
     if (feishu) payload.feishu_webhook = feishu;
     if (qqAppId && qqToken) {
-        payload.qq_bot = { app_id: qqAppId, token: qqToken, group_id: qqGroup };
+        payload.qq_bot = {
+            app_id: qqAppId,
+            token: qqToken,
+            user_id: qqUserId,
+            channel_id: qqChannelId
+        };
     }
 
     await fetch("/api/config/push", {

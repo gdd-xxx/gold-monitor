@@ -165,7 +165,6 @@ class QQBot:
         user_name = author.get("username", "")
         guild_id = data.get("guild_id", "")
         channel_id = data.get("channel_id", "")
-        group_id = data.get("group_id", "")
 
         if not content:
             return
@@ -199,9 +198,7 @@ class QQBot:
 
         plain = _strip_markdown(response)
 
-        if group_id:
-            _qq_send_message(app_id, token, group_id, "group", plain)
-        elif channel_id:
+        if channel_id:
             _qq_send_message(app_id, token, channel_id, "channel", plain)
         elif user_id:
             _qq_send_message(app_id, token, user_id, "c2c", plain)
