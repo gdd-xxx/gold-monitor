@@ -1,6 +1,6 @@
 import json, time, threading, re
 import websocket
-from .config import load_config
+from .config import load_config, save_config
 from .gold_price import get_current_price
 from .chat import parse_chat_command
 from .notifier import _qq_send_message, _strip_markdown, build_pnl_content
@@ -173,7 +173,21 @@ class QQBot:
         if not content:
             return
 
-        print(f"[QQBot] 收到消息: {content} (from {user_name})")
+        print(f"[QQBot] 收到消息: {content} (from {user_name}, user_id={user_id}, channel_id={channel_id})")
+
+        cfg = load_config()
+        qq = cfg.setdefault("push_channels", {}).setdefault("qq_bot", {})
+        updated = False
+        if user_id and not qq.get("user_id"):
+            qq["user_id"] = user_id
+            updated = True
+            print(f"[QQBot] 自动记录用户ID: {user_id}")
+        if channel_id and not qq.get("channel_id"):
+            qq["channel_id"] = channel_id
+            updated = True
+            print(f"[QQBot] 自动记录频道ID: {channel_id}")
+        if updated:
+            save_config(cfg)
 
         handled, response = parse_chat_command(content)
         if not handled:
