@@ -1,4 +1,4 @@
-import json, time, threading
+import json, time, threading, re
 import websocket
 from .config import load_config
 from .gold_price import get_current_price
@@ -6,9 +6,9 @@ from .chat import parse_chat_command
 from .notifier import _get_qq_access_token, _qq_send_message, _strip_markdown, build_pnl_content
 from .models import get_latest_price
 
-WS_URL = "wss://api.sgroup.qq.com/webmark"
+WS_URL = "wss://api.sgroup.qq.com/websocket"
 RECONNECT_DELAY = 5
-HEARTBEAT_INTERVAL = 30
+HEARTBEAT_INTERVAL = 41
 
 class QQBot:
     def __init__(self):
@@ -18,7 +18,8 @@ class QQBot:
         self.heartbeat_thread = None
         self.heartbeat_ack = True
         self._session_id = None
-        self._seq = None
+        self._seq = 0
+        self._stop_event = threading.Event()
 
     def start(self):
         if self.running:
@@ -30,12 +31,14 @@ class QQBot:
         if not app_id or not app_secret:
             return
         self.running = True
+        self._stop_event.clear()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         print("[QQBot] WebSocket连接已启动")
 
     def stop(self):
         self.running = False
+        self._stop_event.set()
         if self.ws:
             try:
                 self.ws.close()
@@ -43,13 +46,13 @@ class QQBot:
                 pass
 
     def _run(self):
-        while self.running:
+        while self.running and not self._stop_event.is_set():
             try:
                 self._connect()
             except Exception as e:
                 print(f"[QQBot] 连接异常: {e}")
-            if self.running:
-                time.sleep(RECONNECT_DELAY)
+            if self.running and not self._stop_event.is_set():
+                self._stop_event.wait(RECONNECT_DELAY)
 
     def _connect(self):
         cfg = load_config()
@@ -63,7 +66,7 @@ class QQBot:
             return
 
         self.heartbeat_ack = True
-        self._seq = None
+        self._seq = 0
 
         self.ws = websocket.WebSocketApp(
             WS_URL,
@@ -72,12 +75,12 @@ class QQBot:
             on_error=self._on_error,
             on_close=self._on_close,
         )
-        self.ws.app_id = app_id
-        self.ws.access_token = access_token
-        self.ws.run_forever(ping_interval=HEARTBEAT_INTERVAL, ping_timeout=10)
+        self.ws._app_id = app_id
+        self.ws._access_token = access_token
+        self.ws.run_forever(ping_interval=0, ping_timeout=0)
 
     def _on_open(self, ws):
-        print("[QQBot] WebSocket已连接，等待握手...")
+        print("[QQBot] WebSocket已连接，等待Hello...")
 
     def _on_message(self, ws, message):
         try:
@@ -86,12 +89,15 @@ class QQBot:
             return
 
         op = data.get("op")
-        self._seq = data.get("s") or self._seq
+        s = data.get("s")
+        if s:
+            self._seq = s
 
         if op == 10:
-            heartbeat_interval = data.get("d", {}).get("heartbeat_interval", HEARTBEAT_INTERVAL) / 1000
+            d = data.get("d", {})
+            heartbeat_interval = d.get("heartbeat_interval", 41000) / 1000
             self._start_heartbeat(ws, heartbeat_interval)
-            self._handshake(ws)
+            self._identify(ws)
 
         elif op == 11:
             self.heartbeat_ack = True
@@ -99,18 +105,23 @@ class QQBot:
         elif op == 0:
             t = data.get("t")
             d = data.get("d", {})
+            self._session_id = d.get("session_id", self._session_id)
+
             if t == "MESSAGE_CREATE" or t == "AT_MESSAGE_CREATE":
-                self._handle_message(ws, d)
+                self._handle_message(d)
 
     def _on_error(self, ws, error):
         print(f"[QQBot] WebSocket错误: {error}")
 
-    def _on_close(self, ws, close_status, close_msg):
-        print(f"[QQBot] WebSocket已断开: {close_status} {close_msg}")
+    def _on_close(self, ws, close_status_code, close_msg):
+        print(f"[QQBot] WebSocket已断开: {close_status_code} {close_msg}")
 
     def _start_heartbeat(self, ws, interval):
+        if self.heartbeat_thread and self.heartbeat_thread.is_alive():
+            return
+
         def heartbeat():
-            while self.running and self.ws == ws:
+            while self.running and self.ws == ws and not self._stop_event.is_set():
                 if not self.heartbeat_ack:
                     print("[QQBot] 心跳超时，断开重连")
                     try:
@@ -120,47 +131,55 @@ class QQBot:
                     return
                 self.heartbeat_ack = False
                 try:
-                    ws.send(json.dumps({"op": 1}))
+                    ws.send(json.dumps({"op": 1, "d": self._seq}))
                 except Exception:
                     return
-                time.sleep(interval)
+                self._stop_event.wait(interval)
 
-        if self.heartbeat_thread:
-            self.heartbeat_thread.daemon = True
         self.heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
         self.heartbeat_thread.start()
 
-    def _handshake(self, ws):
+    def _identify(self, ws):
         cfg = load_config()
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
         app_id = qq.get("app_id", "").strip()
         payload = {
             "op": 2,
             "d": {
-                "token": f"QQBot {app_id}.{ws.access_token}",
+                "token": ws._access_token,
                 "intents": 513,
+                "shard": [0, 1],
+                "properties": {
+                    "os": "linux",
+                    "browser": "python",
+                    "device": "gold-monitor"
+                }
             }
         }
-        if self._session_id:
-            payload["d"]["session_id"] = self._session_id
         try:
             ws.send(json.dumps(payload))
-            print("[QQBot] 握手已发送")
+            print("[QQBot] Identify已发送")
         except Exception as e:
-            print(f"[QQBot] 握手失败: {e}")
+            print(f"[QQBot] Identify失败: {e}")
 
-    def _handle_message(self, ws, data):
-        msg_type = data.get("message_type", "")
+    def _handle_message(self, data):
         content = data.get("content", "").strip()
+        msg_id = data.get("id", "")
+        author = data.get("author", {})
+        user_id = author.get("id", "")
+        user_name = author.get("username", "")
         guild_id = data.get("guild_id", "")
         channel_id = data.get("channel_id", "")
         group_id = data.get("group_id", "")
-        user_id = data.get("author", {}).get("id", "")
 
         if not content:
             return
 
-        print(f"[QQBot] 收到消息: {content}")
+        content = re.sub(r'<@!?\d+>', '', content).strip()
+        if not content:
+            return
+
+        print(f"[QQBot] 收到消息: {content} (from {user_name})")
 
         handled, response = parse_chat_command(content)
         if not handled:
@@ -170,8 +189,7 @@ class QQBot:
             price, source = get_current_price()
             response = f"当前金价：{price}元/克"
         elif response == "__QUERY_PNL__":
-            from .config import load_config as _load
-            cfg = _load()
+            cfg = load_config()
             current = get_latest_price()
             cp = current["price"] if current else 0
             response = build_pnl_content(cfg.get("my_purchases", []), cp)
@@ -183,6 +201,7 @@ class QQBot:
         access_token = _get_qq_access_token(app_id, app_secret)
 
         if not access_token:
+            print("[QQBot] 无法获取token来回复消息")
             return
 
         plain = _strip_markdown(response)
