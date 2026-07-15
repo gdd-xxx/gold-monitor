@@ -29,6 +29,10 @@ class GoldBotClient(botpy.Client):
         _logger.info(f"[QQBot] on_c2c_message_create: {message.content}")
         await self._handle(message, "c2c")
 
+    async def on_group_at_message_create(self, message: Message):
+        _logger.info(f"[QQBot] on_group_at_message_create: {message.content}")
+        await self._handle(message, "group")
+
     async def _handle(self, message: Message, msg_type: str):
         content = message.content.strip()
         if not content:
@@ -39,8 +43,9 @@ class GoldBotClient(botpy.Client):
         user_name = getattr(message, "author", {}).get("username", "") or ""
         msg_id = getattr(message, "id", "") or ""
         guild_id = getattr(message, "guild_id", "") or ""
+        group_id = getattr(message, "group_openid", "") or ""
 
-        _logger.info(f"[QQBot] msg_type={msg_type}, guild={guild_id}, channel={channel_id}, user={user_name}({user_id})")
+        _logger.info(f"[QQBot] msg_type={msg_type}, guild={guild_id}, channel={channel_id}, group={group_id}, user={user_name}({user_id})")
 
         cfg = load_config()
         qq = cfg.setdefault("push_channels", {}).setdefault("qq_bot", {})
@@ -53,11 +58,16 @@ class GoldBotClient(botpy.Client):
             qq["user_id"] = user_id
             updated = True
             _logger.info(f"[QQBot] 自动记录用户ID: {user_id}")
+        if group_id and not qq.get("group_id"):
+            qq["group_id"] = group_id
+            updated = True
+            _logger.info(f"[QQBot] 自动记录群ID: {group_id}")
         if updated:
             save_config(cfg)
 
         handled, response = parse_chat_command(content)
         if not handled:
+            _logger.info(f"[QQBot] 命令未识别: {content}")
             return
 
         if response == "__QUERY_PRICE__":
@@ -74,12 +84,14 @@ class GoldBotClient(botpy.Client):
         try:
             if msg_type == "channel" and channel_id:
                 await self.api.post_message(channel_id=channel_id, content=plain, msg_id=msg_id)
+            elif msg_type == "group" and group_id:
+                await self.api.post_group_message(group_openid=group_id, content=plain, msg_id=msg_id)
             elif user_id:
                 if msg_type == "dms":
                     await self.api.post_dms(user_id=user_id, content=plain, msg_id=msg_id)
                 else:
                     await self.api.post_c2c_message(user_id=user_id, content=plain, msg_id=msg_id)
-            _logger.info(f"[QQBot] 回复成功")
+            _logger.info(f"[QQBot] 回复成功: {plain[:50]}")
         except Exception as e:
             _logger.error(f"[QQBot] 回复失败: {e}")
 
@@ -108,6 +120,7 @@ def _run_bot():
         public_guild_messages=True,
         direct_message=True,
         guild_messages=True,
+        group_messages=True,
     )
     _bot_client = GoldBotClient(intents=intents)
 

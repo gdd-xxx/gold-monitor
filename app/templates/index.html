@@ -188,13 +188,16 @@
                     </div>
                     <div class="form-row-inline">
                         <input type="text" id="qqAppId" placeholder="AppID">
-                        <input type="text" id="qqToken" placeholder="Token">
+                        <input type="text" id="qqToken" placeholder="Token/Secret">
                     </div>
                     <div class="form-row-inline">
-                        <input type="text" id="qqUserId" placeholder="用户ID(私聊推送)">
-                        <input type="text" id="qqChannelId" placeholder="频道ID(频道推送)">
+                        <input type="text" id="qqUserId" placeholder="用户ID(私聊推送，自动获取)">
+                        <input type="text" id="qqChannelId" placeholder="频道ID(频道推送，自动获取)">
                     </div>
-                    <div class="webhook-hint">在QQ开放平台 → 机器人 → 开发设置 → 复制Token</div>
+                    <div class="webhook-hint">
+                        在QQ开放平台 → 机器人 → 开发设置 → 复制AppID和Token<br>
+                        首次私聊机器人后会自动获取用户ID
+                    </div>
                 </div>
                 <button onclick="savePushSettings()" class="btn btn-primary">保存推送设置</button>
             </div>
