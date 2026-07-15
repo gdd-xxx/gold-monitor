@@ -234,10 +234,10 @@ def create_app():
     atexit.register(_shutdown_scheduler)
 
     try:
-        from .qqbot import qqbot
+        from .qqbot import start_bot
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
-        if qq.get("app_id") and qq.get("app_secret"):
-            qqbot.start()
+        if qq.get("app_id") and qq.get("token"):
+            start_bot()
     except Exception as e:
         print(f"[QQBot] 启动失败: {e}")
 
