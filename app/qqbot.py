@@ -38,7 +38,7 @@ class QQBot:
         """重启Bot（用于配置更新后）"""
         print("[QQBot] 重启中...")
         self.stop()
-        time.sleep(1)
+        time.sleep(2)
         self.start()
 
     def stop(self):
@@ -115,7 +115,7 @@ class QQBot:
             if t == "READY":
                 self._session_id = d.get("session_id")
                 print(f"[QQBot] 鉴权成功! session_id={self._session_id}")
-            elif t == "MESSAGE_CREATE" or t == "AT_MESSAGE_CREATE":
+            elif t in ("MESSAGE_CREATE", "AT_MESSAGE_CREATE", "DIRECT_MESSAGE_CREATE"):
                 print(f"[QQBot] 收到消息事件: {t}")
                 self._handle_message(d)
 
@@ -152,7 +152,7 @@ class QQBot:
             "op": 2,
             "d": {
                 "token": token,
-                "intents": 513,
+                "intents": 3276799,
                 "shard": [0, 1],
                 "properties": {
                     "os": "linux",
