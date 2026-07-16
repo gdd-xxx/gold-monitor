@@ -391,7 +391,6 @@ async function loadConfig() {
         document.getElementById("qqAppId").value = qq.app_id || "";
         document.getElementById("qqToken").value = qq.token || qq.app_secret || "";
         document.getElementById("qqUserId").value = qq.user_id || "";
-        document.getElementById("qqChannelId").value = qq.channel_id || "";
     } catch (e) { console.error(e); }
 }
 
@@ -433,7 +432,6 @@ async function savePushSettings() {
     const qqAppId = document.getElementById("qqAppId").value.trim();
     const qqToken = document.getElementById("qqToken").value.trim();
     const qqUserId = document.getElementById("qqUserId").value.trim();
-    const qqChannelId = document.getElementById("qqChannelId").value.trim();
 
     if (wechat) payload.wechat_webhook = wechat;
     if (feishu) payload.feishu_webhook = feishu;
@@ -442,15 +440,18 @@ async function savePushSettings() {
             app_id: qqAppId,
             token: qqToken,
             user_id: qqUserId,
-            channel_id: qqChannelId
         };
     }
 
-    await fetch("/api/config/push", {
+    console.log("[保存] payload:", JSON.stringify(payload));
+
+    const res = await fetch("/api/config/push", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload)
     });
+    const data = await res.json();
+    console.log("[保存] 响应:", data);
 
     showToast("推送设置已保存");
 }
