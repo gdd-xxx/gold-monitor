@@ -190,13 +190,20 @@
                         <input type="text" id="qqAppId" placeholder="AppID">
                         <input type="text" id="qqToken" placeholder="Token/Secret">
                     </div>
-                    <div class="form-row-inline">
-                        <input type="text" id="qqUserId" placeholder="用户ID(私聊推送，自动获取)">
-                        <input type="text" id="qqChannelId" placeholder="频道ID(频道推送，自动获取)">
+                    <div class="form-group">
+                        <label>用户ID (用于私聊推送)</label>
+                        <input type="text" id="qqUserId" placeholder="输入你的QQ用户ID">
                     </div>
                     <div class="webhook-hint">
-                        在QQ开放平台 → 机器人 → 开发设置 → 复制AppID和Token<br>
-                        首次私聊机器人后会自动获取用户ID
+                        <strong>获取用户ID方法：</strong><br>
+                        1. 在QQ开放平台 → 你的机器人 → 开发设置<br>
+                        2. 订阅"接收消息"事件，回调地址填: <code>http://你的公网IP:5000/webhook/qq</code><br>
+                        3. 然后在QQ上给机器人发一条消息<br>
+                        4. 日志中会显示你的用户ID<br>
+                        <br>
+                        <strong>或者手动获取：</strong><br>
+                        用浏览器打开: <code>https://u.y.qq.com/cgi-bin/userinfo?need_fansnum=1</code><br>
+                        登录QQ后可看到用户ID（数字格式）
                     </div>
                 </div>
                 <button onclick="savePushSettings()" class="btn btn-primary">保存推送设置</button>
