@@ -260,8 +260,11 @@ def api_chat():
 def api_push_test():
     data = request.json
     channel = data.get("channel", "wechat")
+    print(f"\n[推送测试] 渠道: {channel}")
+
     title = "测试推送"
     content = f"这是一条测试消息\n时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
     from .notifier import push_wechat, push_feishu, push_qq
     if channel == "wechat":
         ok, msg = push_wechat(title, content)
@@ -270,7 +273,10 @@ def api_push_test():
     elif channel == "qq":
         ok, msg = push_qq(title, content)
     else:
+        print(f"[推送测试] 未知渠道: {channel}")
         return jsonify({"ok": False, "msg": "未知渠道"})
+
+    print(f"[推送测试] 结果: ok={ok}, msg={msg}")
     return jsonify({"ok": ok, "msg": msg})
 
 def _shutdown_scheduler():
@@ -279,16 +285,47 @@ def _shutdown_scheduler():
 
 @app.route("/webhook/qq", methods=["POST"])
 def qq_webhook():
+    print(f"\n[QQ Webhook] ========== 收到Webhook回调 ==========")
+    print(f"[QQ Webhook] Method: {request.method}")
+    print(f"[QQ Webhook] Headers: {dict(request.headers)}")
     data = request.json
-    print(f"[QQ Webhook] {json.dumps(data, ensure_ascii=False)[:500]}")
-    if data.get("op") == 0:
+    print(f"[QQ Webhook] Body: {json.dumps(data, ensure_ascii=False)[:2000]}")
+
+    if not data:
+        print(f"[QQ Webhook] Body为空")
+        return jsonify({})
+
+    op = data.get("op")
+    print(f"[QQ Webhook] op: {op}")
+
+    if op == 0:
+        print(f"[QQ Webhook] 回复心跳")
         return jsonify({"op": 1})
+
+    print(f"[QQ Webhook] 转发给处理器...")
     try:
         from .qqbot import handle_qq_message
         handle_qq_message(data)
     except Exception as e:
         print(f"[QQ Webhook] 处理异常: {e}")
+        import traceback
+        traceback.print_exc()
+
+    print(f"[QQ Webhook] ========== 处理完成 ==========")
     return jsonify({})
+
+@app.route("/api/config/qq", methods=["GET", "POST"])
+def api_config_qq():
+    cfg = load_config()
+    qq = cfg.get("push_channels", {}).get("qq_bot", {})
+    if request.method == "POST":
+        data = request.json
+        qq.update(data)
+        cfg.setdefault("push_channels", {})["qq_bot"] = qq
+        save_config(cfg)
+        print(f"[QQ配置] 已保存: {json.dumps(qq, ensure_ascii=False)}")
+        return jsonify({"ok": True})
+    return jsonify(qq)
 
 def create_app():
     init_db()
