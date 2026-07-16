@@ -1,10 +1,10 @@
-﻿import requests, json, re
+import requests, json, re
 from .config import load_config, save_config
 
 QQ_API_BASE = "https://api.sgroup.qq.com"
 
 def qq_send_message(app_id, token, chat_id, msg_type, content):
-    """??QQ??"""
+    """发送QQ消息"""
     url_map = {
         "c2c": f"{QQ_API_BASE}/v2/users/{chat_id}/messages",
         "channel": f"{QQ_API_BASE}/channels/{chat_id}/messages",
@@ -12,7 +12,7 @@ def qq_send_message(app_id, token, chat_id, msg_type, content):
     }
     url = url_map.get(msg_type)
     if not url:
-        return False, f"??????: {msg_type}"
+        return False, f"不支持的类型: {msg_type}"
 
     headers = {
         "Authorization": f"QQBot {app_id}.{token}",
@@ -22,9 +22,9 @@ def qq_send_message(app_id, token, chat_id, msg_type, content):
 
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=10)
-        print(f"[QQ] ??: {resp.status_code} {resp.text[:200]}")
+        print(f"[QQ] 发送: {resp.status_code} {resp.text[:200]}")
         if resp.status_code in (200, 204):
-            return True, "????"
+            return True, "发送成功"
         try:
             err = resp.json()
             msg = err.get("message", err.get("msg", resp.text[:200]))
@@ -35,18 +35,18 @@ def qq_send_message(app_id, token, chat_id, msg_type, content):
         return False, str(e)
 
 def push_qq(title, content):
-    """?????QQ"""
+    """推送消息到QQ"""
     cfg = load_config()
     qq = cfg.get("push_channels", {}).get("qq_bot", {})
     app_id = qq.get("app_id", "").strip()
     token = qq.get("token", "").strip()
 
     if not app_id or not token:
-        return False, "QQ???(?AppID+Token)"
+        return False, "QQ未配置(需AppID+Token)"
 
     plain = re.sub(r'\*\*(.+?)\*\*', r'\1', content)
     plain = re.sub(r'^###?\s+', '', plain, flags=re.MULTILINE)
-    plain = f"?{title}?\n{plain}"
+    plain = f"【{title}】\n{plain}"
 
     user_id = qq.get("user_id", "").strip()
     channel_id = qq.get("channel_id", "").strip()
@@ -65,21 +65,20 @@ def push_qq(title, content):
     if channel_id:
         return qq_send_message(app_id, token, channel_id, "channel", plain)
 
-    return False, "QQ??????ID???ID"
+    return False, "QQ推送需要用户ID或频道ID"
 
 def build_price_alert_content(price, low, high):
     import datetime
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    direction = "????" if price >= high else "????"
-    return f"?????**{price}?/?**\n?????{direction}?{low}-{high}?\n???{now}"
+    direction = "突破上限" if price >= high else "跌破下限"
+    return f"当前金价：**{price}元/克**\n触发条件：{direction}（{low}-{high}）\n时间：{now}"
 
 def build_pnl_content(purchases, current_price):
     from .gold_price import calculate_pnl
-    lines = [f"?????**{current_price}?/?**\n"]
+    lines = [f"当前金价：**{current_price}元/克**\n"]
     for p in purchases:
         pnl, pct = calculate_pnl(p["price"], current_price, p.get("fee", 0))
-        status = "??" if pnl >= 0 else "??"
+        status = "盈利" if pnl >= 0 else "亏损"
         sign = "+" if pnl >= 0 else ""
-        lines.append(f"- ??? {p['price']}?/? ? {status} **{sign}{pnl}?/?**?{sign}{pct}%?")
+        lines.append(f"- 购入价 {p['price']}元/克 → {status} **{sign}{pnl}元/克**（{sign}{pct}%）")
     return "\n".join(lines)
-
