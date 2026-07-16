@@ -83,7 +83,7 @@ class QQBot:
         self._heartbeat_ack = True
         self._seq = 0
 
-        self.ws.run_forever(ping_interval=0, ping_timeout=0)
+        self.ws.run_forever(ping_interval=self._heartbeat_interval, ping_timeout=10)
 
     def _on_open(self, ws):
         print("[QQBot] WebSocket已连接，等待Hello...")
