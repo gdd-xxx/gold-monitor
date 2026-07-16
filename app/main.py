@@ -277,6 +277,19 @@ def _shutdown_scheduler():
     if scheduler.running:
         scheduler.shutdown(wait=False)
 
+@app.route("/webhook/qq", methods=["POST"])
+def qq_webhook():
+    data = request.json
+    print(f"[QQ Webhook] {json.dumps(data, ensure_ascii=False)[:500]}")
+    if data.get("op") == 0:
+        return jsonify({"op": 1})
+    try:
+        from .qqbot import handle_qq_message
+        handle_qq_message(data)
+    except Exception as e:
+        print(f"[QQ Webhook] 处理异常: {e}")
+    return jsonify({})
+
 def create_app():
     init_db()
     cfg = load_config()
@@ -285,15 +298,6 @@ def create_app():
     scheduler.start()
     scheduled_fetch()
     atexit.register(_shutdown_scheduler)
-
-    try:
-        from .qqbot import start_bot
-        qq = cfg.get("push_channels", {}).get("qq_bot", {})
-        if qq.get("app_id") and qq.get("token"):
-            start_bot()
-    except Exception as e:
-        print(f"[QQBot] 启动失败: {e}")
-
     return app
 
 if __name__ == "__main__":
