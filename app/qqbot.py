@@ -34,6 +34,13 @@ class QQBot:
         self.thread.start()
         print("[QQBot] 启动线程")
 
+    def restart(self):
+        """重启Bot（用于配置更新后）"""
+        print("[QQBot] 重启中...")
+        self.stop()
+        time.sleep(1)
+        self.start()
+
     def stop(self):
         self.running = False
         self._stop_event.set()
