@@ -147,11 +147,12 @@ class QQBot:
     def _identify(self, ws):
         cfg = load_config()
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
+        app_id = qq.get("app_id", "").strip()
         token = qq.get("token", "").strip()
         payload = {
             "op": 2,
             "d": {
-                "token": token,
+                "token": f"Bot {app_id}.{token}",
                 "intents": 3276799,
                 "shard": [0, 1],
                 "properties": {
