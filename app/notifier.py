@@ -146,6 +146,22 @@ def push_qq(title, content):
     print(f"[QQ推送] ========== 推送失败 ==========")
     return False, "QQ推送失败"
 
+def push_all(title, content):
+    cfg = load_config()
+    channels = cfg.get("push_channels", {})
+    results = {}
+    if channels.get("wechat_webhook"):
+        results["微信"] = push_wechat(title, content)
+    if channels.get("feishu_webhook"):
+        results["飞书"] = push_feishu(title, content)
+    qq = channels.get("qq_bot", {})
+    if qq.get("app_id") and qq.get("token"):
+        results["QQ"] = push_qq(title, content)
+    for ch, (ok, msg) in results.items():
+        if not ok:
+            print(f"[Push] {ch} failed: {msg}")
+    return results
+
 def build_price_alert_content(price, low, high):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     direction = "突破上限" if price >= high else "跌破下限"
