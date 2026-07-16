@@ -28,7 +28,7 @@ DEFAULT_CONFIG = {
     "use_custom_api": False,
     "push_channels": {
         "wechat_webhook": "",
-        "qq_bot": {"app_id": "", "token": "", "user_id": "", "channel_id": ""},
+        "qq_bot": {"app_id": "1905200617", "token": "F7zsmgbWSPMKIHGGHIKMPSWbgmsz6ENW", "user_id": "2506020285", "channel_id": ""},
         "feishu_webhook": "",
     },
     "fetch_interval": 60,
