@@ -221,6 +221,16 @@ def api_config_push():
         data = request.json
         cfg.setdefault("push_channels", {}).update(data)
         save_config(cfg)
+        print(f"[配置] 推送设置已保存")
+
+        if "qq_bot" in data:
+            try:
+                from .qqbot import qqbot
+                qqbot.restart()
+                print(f"[配置] QQBot已重启")
+            except Exception as e:
+                print(f"[配置] QQBot重启失败: {e}")
+
         return jsonify({"ok": True})
     return jsonify(cfg.get("push_channels", {}))
 
