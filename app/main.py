@@ -219,17 +219,26 @@ def api_config_push():
     cfg = load_config()
     if request.method == "POST":
         data = request.json
-        cfg.setdefault("push_channels", {}).update(data)
-        save_config(cfg)
-        print(f"[配置] 推送设置已保存")
+        print(f"[配置] 收到推送配置: {json.dumps(data, ensure_ascii=False)}")
 
+        push_channels = cfg.setdefault("push_channels", {})
         if "qq_bot" in data:
-            try:
-                from .qqbot import qqbot
-                qqbot.restart()
-                print(f"[配置] QQBot已重启")
-            except Exception as e:
-                print(f"[配置] QQBot重启失败: {e}")
+            push_channels["qq_bot"] = data["qq_bot"]
+            print(f"[配置] QQ配置已更新: {json.dumps(data['qq_bot'], ensure_ascii=False)}")
+        if "wechat_webhook" in data:
+            push_channels["wechat_webhook"] = data["wechat_webhook"]
+        if "feishu_webhook" in data:
+            push_channels["feishu_webhook"] = data["feishu_webhook"]
+
+        save_config(cfg)
+        print(f"[配置] 配置已保存到文件")
+
+        try:
+            from .qqbot import qqbot
+            qqbot.restart()
+            print(f"[配置] QQBot已重启")
+        except Exception as e:
+            print(f"[配置] QQBot重启失败: {e}")
 
         return jsonify({"ok": True})
     return jsonify(cfg.get("push_channels", {}))
