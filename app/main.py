@@ -1,4 +1,4 @@
-import atexit, subprocess, threading, json
+import atexit, subprocess, threading, json, os
 from flask import Flask, render_template, jsonify, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import requests
@@ -88,14 +88,14 @@ def api_update_apply():
     if not _update_status["available"]:
         return jsonify({"ok": False, "msg": "没有可用更新"})
 
+    tag = _update_status.get("latest") or "latest"
+    full_image = f"{IMAGE_NAME}:{tag}"
+
     _update_status["updating"] = True
-    _update_status["message"] = "正在拉取新镜像..."
+    _update_status["message"] = f"拉取镜像 {tag}..."
 
     def do_update():
         try:
-            tag = _update_status["latest"] or "latest"
-            full_image = f"{IMAGE_NAME}:{tag}"
-
             print(f"[Update] 拉取镜像: {full_image}")
             result = subprocess.run(
                 ["docker", "pull", full_image],
@@ -106,28 +106,27 @@ def api_update_apply():
                 _update_status["updating"] = False
                 return
 
-            _update_status["message"] = "重启容器中..."
-            print("[Update] 重启容器...")
+            _update_status["message"] = "拉取成功，准备重启..."
 
             container_name = os.environ.get("HOSTNAME", "gold-monitor")
-            subprocess.run(["docker", "stop", container_name], timeout=30)
-            subprocess.run(["docker", "rm", container_name], timeout=30)
+            data_dir = "/app/data"
 
-            cfg = load_config()
-            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+            restart_script = f'''#!/bin/sh
+sleep 3
+docker stop {container_name} 2>/dev/null
+docker rm {container_name} 2>/dev/null
+docker run -d --name {container_name} -p 5000:5000 -v {data_dir}:/app/data --restart unless-stopped {full_image}
+'''
+            script_path = "/tmp/restart.sh"
+            with open(script_path, "w") as f:
+                f.write(restart_script)
+            os.chmod(script_path, 0o755)
 
-            run_cmd = [
-                "docker", "run", "-d",
-                "--name", container_name,
-                "-p", "5000:5000",
-                "-v", f"{data_dir}:/app/data",
-                "--restart", "unless-stopped",
-                full_image
-            ]
-            subprocess.run(run_cmd, timeout=60)
+            print("[Update] 启动重启脚本...")
+            subprocess.Popen(["sh", script_path])
 
-            _update_status["message"] = "更新完成，重启中..."
-            print("[Update] 更新完成")
+            _update_status["message"] = "更新已触发，容器将在几秒后重启"
+            print("[Update] 更新已触发")
 
         except Exception as e:
             _update_status["message"] = f"更新失败: {e}"
