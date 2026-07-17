@@ -202,10 +202,10 @@ class QQBot:
         cfg = load_config()
         qq = cfg.setdefault("push_channels", {}).setdefault("qq_bot", {})
         updated = False
-        if user_id and not qq.get("user_id"):
-            qq["user_id"] = user_id
+        if user_id and not qq.get("open_id"):
+            qq["open_id"] = user_id
             updated = True
-            print(f"[QQBot] 自动记录用户ID: {user_id}")
+            print(f"[QQBot] 自动记录open_id: {user_id}")
         if channel_id and not qq.get("channel_id"):
             qq["channel_id"] = channel_id
             updated = True
