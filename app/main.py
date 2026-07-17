@@ -227,6 +227,8 @@ def api_chat():
         current = get_latest_price()
         cp = current["price"] if current else 0
         return jsonify({"handled": True, "response": build_pnl_content(cfg.get("my_purchases", []), cp)})
+    if response == "__QUERY_CHART__":
+        return jsonify({"handled": True, "response": "__CHART_IMAGE__", "type": "chart"})
     return jsonify({"handled": True, "response": response})
 
 @app.route("/api/push/test", methods=["POST"])
