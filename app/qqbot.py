@@ -229,12 +229,16 @@ class QQBot:
         plain = re.sub(r'\*\*(.+?)\*\*', r'\1', response)
 
         app_id = qq.get("app_id", "").strip()
-        token = qq.get("token", "").strip()
-        if app_id and token:
-            if channel_id:
-                qq_send_message(app_id, token, channel_id, "channel", plain)
-            elif user_id:
-                qq_send_message(app_id, token, user_id, "c2c", plain)
+        app_secret = qq.get("token", "").strip()
+        if app_id and app_secret:
+            access_token = _get_access_token(app_id, app_secret)
+            if access_token:
+                if channel_id:
+                    qq_send_message(app_id, access_token, channel_id, "channel", plain)
+                elif user_id:
+                    qq_send_message(app_id, access_token, user_id, "c2c", plain)
+            else:
+                print("[QQBot] 获取access_token失败，无法回复")
 
 qqbot = QQBot()
 
