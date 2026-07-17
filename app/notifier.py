@@ -16,7 +16,7 @@ def qq_send_message(app_id, token, chat_id, msg_type, content):
         return False, f"不支持的类型: {msg_type}"
 
     headers = {
-        "Authorization": f"QQBot {token}",
+        "Authorization": f"QQBot {app_id}.{token}",
         "Content-Type": "application/json",
     }
     payload = {"msg_type": 0, "content": content}
