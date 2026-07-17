@@ -225,6 +225,18 @@ class QQBot:
             current = get_latest_price()
             cp = current["price"] if current else 0
             response = build_pnl_content(cfg.get("my_purchases", []), cp)
+        elif response == "__QUERY_CHART__":
+            # 发送今日走势文字版
+            from .models import get_today_prices
+            prices = get_today_prices()
+            if prices:
+                lines = ["今日金价走势：\n"]
+                for p in prices[-10:]:  # 最近10条
+                    lines.append(f"  {p['time']} → {p['price']}元/克")
+                lines.append(f"\n共 {len(prices)} 条记录")
+                response = "\n".join(lines)
+            else:
+                response = "今日暂无金价数据"
 
         plain = re.sub(r'\*\*(.+?)\*\*', r'\1', response)
 
