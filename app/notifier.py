@@ -16,13 +16,13 @@ def qq_send_message(app_id, token, chat_id, msg_type, content):
         return False, f"不支持的类型: {msg_type}"
 
     headers = {
-        "Authorization": f"QQBot {app_id}.{token}",
+        "Authorization": f"QQBot {token}",
         "Content-Type": "application/json",
     }
     payload = {"msg_type": 0, "content": content}
 
-    print(f"[QQ发送] 开始: type={msg_type}, chat_id={chat_id}, url={url}")
-    print(f"[QQ发送] Authorization: QQBot {app_id[:6]}...{token[:10]}...")
+    print(f"[QQ发送] 开始: type={msg_type}, chat_id={chat_id}")
+    print(f"[QQ发送] Authorization: QQBot {token[:20]}...")
     print(f"[QQ发送] Payload: {json.dumps(payload, ensure_ascii=False)[:200]}")
 
     try:
@@ -97,19 +97,26 @@ def push_feishu(title, content):
 def push_qq(title, content):
     """推送消息到QQ"""
     print(f"\n[QQ推送] ========== 开始推送 ==========")
-    print(f"[QQ推送] 标题: {title}")
 
     cfg = load_config()
     qq = cfg.get("push_channels", {}).get("qq_bot", {})
     app_id = qq.get("app_id", "").strip()
-    token = qq.get("token", "").strip()
+    app_secret = qq.get("token", "").strip()
 
-    print(f"[QQ推送] AppID: {app_id[:6]}... (长度={len(app_id)})")
-    print(f"[QQ推送] Token: {token[:10]}... (长度={len(token)})")
-
-    if not app_id or not token:
+    if not app_id or not app_secret:
         print(f"[QQ推送] 失败: AppID或Token为空")
         return False, "QQ未配置(需AppID+Token)"
+
+    try:
+        resp = requests.post("https://bots.qq.com/app/getAppAccessToken", json={
+            "appId": app_id, "clientSecret": app_secret
+        }, timeout=10)
+        access_token = resp.json().get("access_token")
+        if not access_token:
+            return False, "获取access_token失败"
+        print(f"[QQ推送] access_token获取成功")
+    except Exception as e:
+        return False, f"获取token异常: {e}"
 
     plain = re.sub(r'\*\*(.+?)\*\*', r'\1', content)
     plain = re.sub(r'^###?\s+', '', plain, flags=re.MULTILINE)
@@ -118,32 +125,19 @@ def push_qq(title, content):
     user_id = qq.get("user_id", "").strip()
     channel_id = qq.get("channel_id", "").strip()
 
-    print(f"[QQ推送] user_id: '{user_id}' (长度={len(user_id)})")
-    print(f"[QQ推送] channel_id: '{channel_id}' (长度={len(channel_id)})")
-    print(f"[QQ推送] 消息内容: {plain[:100]}...")
-
     if not user_id and not channel_id:
-        print(f"[QQ推送] 失败: user_id和channel_id都为空!")
-        print(f"[QQ推送] 请先在QQ上给机器人发一条消息以自动获取ID")
-        return False, "QQ推送需要用户ID或频道ID(请先私聊机器人)"
+        return False, "QQ推送需要用户ID或频道ID"
 
     if user_id:
-        print(f"[QQ推送] 尝试私聊推送 to user_id={user_id}")
-        ok, msg = qq_send_message(app_id, token, user_id, "c2c", plain)
-        print(f"[QQ推送] 私聊结果: ok={ok}, msg={msg}")
+        ok, msg = qq_send_message(app_id, access_token, user_id, "c2c", plain)
         if ok:
-            print(f"[QQ推送] ========== 推送成功 ==========")
             return True, msg
 
     if channel_id:
-        print(f"[QQ推送] 尝试频道推送 to channel_id={channel_id}")
-        ok, msg = qq_send_message(app_id, token, channel_id, "channel", plain)
-        print(f"[QQ推送] 频道结果: ok={ok}, msg={msg}")
+        ok, msg = qq_send_message(app_id, access_token, channel_id, "channel", plain)
         if ok:
-            print(f"[QQ推送] ========== 推送成功 ==========")
             return True, msg
 
-    print(f"[QQ推送] ========== 推送失败 ==========")
     return False, "QQ推送失败"
 
 def push_all(title, content):
