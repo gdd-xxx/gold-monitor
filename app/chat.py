@@ -2,11 +2,31 @@ import re
 from .config import load_config, save_config
 from .gold_price import get_current_price
 
+def _get_state():
+    cfg = load_config()
+    return cfg.setdefault("chat_state", {})
+
+def _set_state(state):
+    cfg = load_config()
+    cfg["chat_state"] = state
+    save_config(cfg)
+
+def _clear_state():
+    cfg = load_config()
+    cfg["chat_state"] = {}
+    save_config(cfg)
+
 def parse_chat_command(text):
-    """Parse chat commands"""
+    """Parse chat commands with multi-step conversation support"""
     text = text.strip()
     cfg = load_config()
+    state = _get_state()
 
+    # 处理进行中的对话
+    if state.get("step"):
+        return _handle_step(text, state, cfg)
+
+    # 阈值设置
     m = re.search(r'[阈阀]值\s*(\d+\.?\d*)\s*[-~至到]\s*(\d+\.?\d*)', text)
     if m:
         low, high = float(m.group(1)), float(m.group(2))
@@ -16,26 +36,51 @@ def parse_chat_command(text):
         save_config(cfg)
         return True, f"阈值已设置：低于{low}元或超过{high}元时推送"
 
+    # 关闭提醒
     m = re.search(r'关闭[推提]醒', text)
     if m:
         cfg["alert_enabled"] = False
         save_config(cfg)
         return True, "提醒已关闭"
 
+    # 开启提醒
     m = re.search(r'开启[推提]醒', text)
     if m:
         cfg["alert_enabled"] = True
         save_config(cfg)
         return True, "提醒已开启"
 
-    m = re.search(r'(添加|买入|记录)\s*(\d+\.?\d*)\s*(元|块)?\s*(手续费\s*(\d+\.?\d*)%?)?', text)
+    # 添加买入 - 支持完整格式：添加875 手续费0.4% 买入10000元
+    m = re.search(r'(添加|买入|记录)\s*(\d+\.?\d*)', text)
     if m:
         price = float(m.group(2))
-        fee = float(m.group(5)) if m.group(5) else 0
-        cfg.setdefault("my_purchases", []).append({"price": price, "fee": fee})
-        save_config(cfg)
-        return True, f"已添加：{price}元/克，手续费{fee}%"
+        # 检查是否包含完整信息
+        fee_match = re.search(r'手续费\s*(\d+\.?\d*)%?', text)
+        amount_match = re.search(r'(\d+\.?\d*)\s*(元|块|¥)', text)
+        weight_match = re.search(r'(\d+\.?\d*)\s*(克|g|G)', text)
 
+        fee = float(fee_match.group(1)) if fee_match else 0
+        amount = float(amount_match.group(1)) if amount_match else 0
+        weight = float(weight_match.group(1)) if weight_match else 0
+
+        # 如果有完整信息，直接添加
+        if fee > 0 and (amount > 0 or weight > 0):
+            if amount > 0 and weight == 0:
+                weight = round(amount / price, 2)
+            elif weight > 0 and amount == 0:
+                amount = round(weight * price, 2)
+            purchase = {"price": price, "fee": fee, "amount": amount, "weight": weight}
+            cfg.setdefault("my_purchases", []).append(purchase)
+            save_config(cfg)
+            return True, f"已添加：{price}元/克，手续费{fee}%，{amount}元/{weight}克"
+
+        # 否则进入多步对话
+        _set_state({"step": "add_fee", "price": price, "fee": fee, "amount": amount, "weight": weight})
+        if fee > 0:
+            return True, f"买入价：{price}元/克，手续费：{fee}%\n买了多少元？（或多少克）"
+        return True, f"买入价：{price}元/克\n手续费多少？（输入0跳过）"
+
+    # 删除记录
     m = re.search(r'删除\s*(\d+)', text)
     if m:
         idx = int(m.group(1)) - 1
@@ -46,14 +91,37 @@ def parse_chat_command(text):
             return True, f"已删除：买入价{removed['price']}元/克"
         return True, f"序号无效，当前共{len(purchases)}条记录"
 
+    # 推送设置
+    m = re.search(r'推送[设配]置|推送[内模]容|推送[选选]', text)
+    if m:
+        _set_state({"step": "push_select"})
+        push_items = cfg.get("push_items", {"price": True, "pnl": True, "chart": False})
+        status = lambda k: "✓" if push_items.get(k) else "✗"
+        return True, (
+            f"当前推送内容：\n"
+            f"1. 金价预警 {status('price')}\n"
+            f"2. 盈亏情况 {status('pnl')}\n"
+            f"3. 今日走势 {status('chart')}\n\n"
+            f"回复数字切换，如：1,2 或 1,3\n"
+            f"回复取消退出设置"
+        )
+
+    # 查询金价
     m = re.search(r'查询|当前[金价价格]|金价|报价', text)
     if m:
         return True, "__QUERY_PRICE__"
 
+    # 盈亏查询
     m = re.search(r'盈亏|收益|我的|持仓', text)
     if m:
         return True, "__QUERY_PNL__"
 
+    # 今日走势
+    m = re.search(r'今日走势|走势图|折线图|图表', text)
+    if m:
+        return True, "__QUERY_CHART__"
+
+    # 间隔设置
     m = re.search(r'间隔\s*(\d+)', text)
     if m:
         interval = max(30, int(m.group(1)))
@@ -61,18 +129,99 @@ def parse_chat_command(text):
         save_config(cfg)
         return True, f"查询间隔已设为{interval}秒"
 
+    # 帮助
     m = re.search(r'帮助|help|菜单|cmd', text, re.IGNORECASE)
     if m:
         return True, (
             "可用命令：\n"
             "金价/查询 → 查看当前金价\n"
             "盈亏/持仓 → 查看盈亏\n"
+            "今日走势 → 查看走势图\n"
             "阈值870-900 → 设置推送阈值\n"
             "开启/关闭提醒\n"
-            "添加870.5 手续费0.5% → 记录买入\n"
+            "添加875 手续费0.4% 10000元\n"
+            "添加875（进入引导）\n"
             "删除1 → 删除第1条记录\n"
+            "推送设置 → 设置推送内容\n"
             "间隔60 → 设置查询间隔(秒)\n"
             "帮助 → 显示此帮助"
         )
 
     return False, None
+
+def _handle_step(text, state, cfg):
+    """处理多步对话"""
+    step = state.get("step")
+
+    # 取消
+    if text in ("取消", "退出", "q", "Q"):
+        _clear_state()
+        return True, "已取消"
+
+    # 添加买入 - 手续费步骤
+    if step == "add_fee":
+        m = re.search(r'(\d+\.?\d*)', text)
+        if m:
+            fee = float(m.group(1))
+            state["fee"] = fee
+            state["step"] = "add_amount"
+            _set_state(state)
+            price = state["price"]
+            return True, f"买入价：{price}元/克，手续费：{fee}%\n买了多少元？（或多少克，如：10000元 或 11克）"
+        return True, "请输入手续费百分比（如：0.4）"
+
+    # 添加买入 - 金额/克数步骤
+    if step == "add_amount":
+        price = state["price"]
+        fee = state.get("fee", 0)
+
+        amount_match = re.search(r'(\d+\.?\d*)\s*(元|块|¥)', text)
+        weight_match = re.search(r'(\d+\.?\d*)\s*(克|g|G)', text)
+        num_match = re.search(r'^(\d+\.?\d*)$', text)
+
+        if amount_match:
+            amount = float(amount_match.group(1))
+            weight = round(amount / price, 2)
+        elif weight_match:
+            weight = float(weight_match.group(1))
+            amount = round(weight * price, 2)
+        elif num_match:
+            # 如果只输入数字，默认为金额
+            amount = float(num_match.group(1))
+            weight = round(amount / price, 2)
+        else:
+            return True, "请输入金额（如：10000元）或克数（如：11克）"
+
+        purchase = {"price": price, "fee": fee, "amount": amount, "weight": weight}
+        cfg.setdefault("my_purchases", []).append(purchase)
+        save_config(cfg)
+        _clear_state()
+        return True, f"已添加：\n买入价：{price}元/克\n手续费：{fee}%\n金额：{amount}元\n数量：{weight}克"
+
+    # 推送设置选择
+    if step == "push_select":
+        # 解析数字选择，支持中文逗号
+        text = text.replace("，", ",").replace("、", ",").replace(" ", "")
+        selections = re.findall(r'[123]', text)
+
+        if not selections:
+            return True, "请输入数字选择，如：1,2 或 1,3"
+
+        push_items = cfg.get("push_items", {"price": True, "pnl": True, "chart": False})
+        push_items["price"] = "1" in selections
+        push_items["pnl"] = "2" in selections
+        push_items["chart"] = "3" in selections
+        cfg["push_items"] = push_items
+        save_config(cfg)
+        _clear_state()
+
+        status = lambda k: "✓" if push_items.get(k) else "✗"
+        return True, (
+            f"推送设置已更新：\n"
+            f"1. 金价预警 {status('price')}\n"
+            f"2. 盈亏情况 {status('pnl')}\n"
+            f"3. 今日走势 {status('chart')}"
+        )
+
+    _clear_state()
+    return True, "对话已重置"
