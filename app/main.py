@@ -1,4 +1,4 @@
-import atexit, subprocess, threading, json, os
+import atexit, json, os
 from flask import Flask, render_template, jsonify, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import requests
@@ -7,12 +7,11 @@ import datetime
 from .models import init_db, insert_price, get_today_prices, get_daily_prices_for_chart, get_latest_price
 from .gold_price import get_current_price, calculate_pnl
 from .config import load_config, save_config
-from .notifier import push_all, push_qq, build_price_alert_content, build_pnl_content
+from .notifier import push_all, push_qq, push_wechat, push_feishu, build_price_alert_content, build_pnl_content
 from .chat import parse_chat_command
 from .version import VERSION, GITHUB_REPO, IMAGE_NAME
 
 app = Flask(__name__)
-
 scheduler = BackgroundScheduler()
 last_alert_price = {"price": None}
 _update_status = {"checking": False, "available": False, "latest": "", "updating": False, "message": ""}
@@ -32,9 +31,8 @@ def scheduled_fetch():
                     if prev is None or (prev < low and price >= low) or (prev > high and price <= high) or (price < low and prev >= low) or (price > high and prev <= high):
                         content = build_price_alert_content(price, low, high)
                         results = push_all("金价预警", content)
-                        if results:
-                            for ch, (ok, msg) in results.items():
-                                print(f"[Alert] {ch}: {'OK' if ok else msg}")
+                        for ch, (ok, msg) in results.items():
+                            print(f"[Alert] {ch}: {'OK' if ok else msg}")
                         last_alert_price["price"] = price
             last_alert_price["price"] = price
             print(f"[{now.strftime('%H:%M:%S')}] Price: {price} ({source})")
@@ -60,13 +58,8 @@ def api_update_check():
     if _update_status["checking"]:
         return jsonify({"ok": False, "msg": "正在检查..."})
     _update_status["checking"] = True
-    _update_status["message"] = "检查更新中..."
     try:
-        resp = requests.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-            timeout=10,
-            headers={"Accept": "application/vnd.github.v3+json"}
-        )
+        resp = requests.get(f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest", timeout=10)
         if resp.status_code == 200:
             data = resp.json()
             tag = data.get("tag_name", "").lstrip("v")
@@ -90,47 +83,24 @@ def api_update_apply():
 
     tag = _update_status.get("latest") or "latest"
     full_image = f"{IMAGE_NAME}:{tag}"
-
     _update_status["updating"] = True
-    _update_status["message"] = f"拉取镜像 {tag}..."
 
     def do_update():
         try:
-            print(f"[Update] 拉取镜像: {full_image}")
-            result = subprocess.run(
-                ["docker", "pull", full_image],
-                capture_output=True, text=True, timeout=300
-            )
+            print(f"[Update] 拉取: {full_image}")
+            result = subprocess.run(["docker", "pull", full_image], capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 _update_status["message"] = f"拉取失败: {result.stderr[:200]}"
-                _update_status["updating"] = False
                 return
-
-            _update_status["message"] = "拉取成功，准备重启..."
-
             container_name = os.environ.get("HOSTNAME", "gold-monitor")
-            data_dir = "/app/data"
-
-            restart_script = f'''#!/bin/sh
-sleep 3
-docker stop {container_name} 2>/dev/null
-docker rm {container_name} 2>/dev/null
-docker run -d --name {container_name} -p 5000:5000 -v {data_dir}:/app/data --restart unless-stopped {full_image}
-'''
-            script_path = "/tmp/restart.sh"
-            with open(script_path, "w") as f:
-                f.write(restart_script)
-            os.chmod(script_path, 0o755)
-
-            print("[Update] 启动重启脚本...")
-            subprocess.Popen(["sh", script_path])
-
-            _update_status["message"] = "更新已触发，容器将在几秒后重启"
-            print("[Update] 更新已触发")
-
+            script = f"#!/bin/sh\nsleep 3\ndocker stop {container_name} 2>/dev/null\ndocker rm {container_name} 2>/dev/null\ndocker run -d --name {container_name} -p 5000:5000 -v /app/data:/app/data --restart unless-stopped {full_image}\n"
+            with open("/tmp/restart.sh", "w") as f:
+                f.write(script)
+            os.chmod("/tmp/restart.sh", 0o755)
+            subprocess.Popen(["sh", "/tmp/restart.sh"])
+            _update_status["message"] = "更新已触发，容器将重启"
         except Exception as e:
             _update_status["message"] = f"更新失败: {e}"
-            print(f"[Update] Error: {e}")
         finally:
             _update_status["updating"] = False
 
@@ -173,12 +143,10 @@ def api_pnl():
             cfg.setdefault("my_purchases", []).append(purchase)
             save_config(cfg)
             return jsonify({"ok": True})
-
     current = get_latest_price()
     current_price = current["price"] if current else 0
-    purchases = cfg.get("my_purchases", [])
     results = []
-    for p in purchases:
+    for p in cfg.get("my_purchases", []):
         pnl, pct = calculate_pnl(p["price"], current_price, p.get("fee", 0))
         results.append({
             "purchase_price": p["price"],
@@ -186,9 +154,7 @@ def api_pnl():
             "amount": p.get("amount", 0),
             "fee": p.get("fee", 0),
             "note": p.get("note", ""),
-            "pnl": pnl,
-            "pnl_percent": pct,
-            "current_price": current_price,
+            "pnl": pnl, "pnl_percent": pct, "current_price": current_price,
         })
     return jsonify({"current_price": current_price, "purchases": results})
 
@@ -205,40 +171,31 @@ def api_config():
                     cfg[k] = v
         save_config(cfg)
         return jsonify({"ok": True})
-    safe = {k: v for k, v in cfg.items() if k not in ("push_channels", "my_purchases")}
-    return jsonify(safe)
+    return jsonify({k: v for k, v in cfg.items() if k not in ("push_channels", "my_purchases")})
 
 @app.route("/api/purchases", methods=["GET"])
 def api_purchases():
-    cfg = load_config()
-    return jsonify(cfg.get("my_purchases", []))
+    return jsonify(load_config().get("my_purchases", []))
 
 @app.route("/api/config/push", methods=["GET", "POST"])
 def api_config_push():
     cfg = load_config()
     if request.method == "POST":
         data = request.json
-        print(f"[配置] 收到推送配置: {json.dumps(data, ensure_ascii=False)}")
-
+        print(f"[配置] 收到: {json.dumps(data, ensure_ascii=False)}")
         push_channels = cfg.setdefault("push_channels", {})
         if "qq_bot" in data:
             push_channels["qq_bot"] = data["qq_bot"]
-            print(f"[配置] QQ配置已更新: {json.dumps(data['qq_bot'], ensure_ascii=False)}")
         if "wechat_webhook" in data:
             push_channels["wechat_webhook"] = data["wechat_webhook"]
         if "feishu_webhook" in data:
             push_channels["feishu_webhook"] = data["feishu_webhook"]
-
         save_config(cfg)
-        print(f"[配置] 配置已保存到文件")
-
         try:
             from .qqbot import qqbot
             qqbot.restart()
-            print(f"[配置] QQBot已重启")
         except Exception as e:
             print(f"[配置] QQBot重启失败: {e}")
-
         return jsonify({"ok": True})
     return jsonify(cfg.get("push_channels", {}))
 
@@ -251,7 +208,7 @@ def api_config_interval():
     save_config(cfg)
     try:
         scheduler.reschedule_job("fetch_gold", trigger="interval", seconds=interval)
-    except Exception:
+    except:
         pass
     return jsonify({"ok": True, "interval": interval})
 
@@ -264,26 +221,20 @@ def api_chat():
         return jsonify({"handled": False, "response": "无法识别的命令，输入'帮助'查看可用命令"})
     if response == "__QUERY_PRICE__":
         price, source = get_current_price()
-        source_map = {"jdjygold": "京东黄金", "czbank": "浙商银行", "custom": "自定义"}
-        return jsonify({"handled": True, "response": f"当前金价：{price}元/克（{source_map.get(source, source)}）"})
+        return jsonify({"handled": True, "response": f"当前金价：{price}元/克"})
     if response == "__QUERY_PNL__":
         cfg = load_config()
         current = get_latest_price()
         cp = current["price"] if current else 0
-        content = build_pnl_content(cfg.get("my_purchases", []), cp)
-        return jsonify({"handled": True, "response": content})
+        return jsonify({"handled": True, "response": build_pnl_content(cfg.get("my_purchases", []), cp)})
     return jsonify({"handled": True, "response": response})
 
 @app.route("/api/push/test", methods=["POST"])
 def api_push_test():
     data = request.json
     channel = data.get("channel", "wechat")
-    print(f"\n[推送测试] 渠道: {channel}")
-
     title = "测试推送"
-    content = f"这是一条测试消息\n时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-
-    from .notifier import push_wechat, push_feishu, push_qq
+    content = f"测试消息 {datetime.datetime.now().strftime('%H:%M:%S')}"
     if channel == "wechat":
         ok, msg = push_wechat(title, content)
     elif channel == "feishu":
@@ -291,59 +242,12 @@ def api_push_test():
     elif channel == "qq":
         ok, msg = push_qq(title, content)
     else:
-        print(f"[推送测试] 未知渠道: {channel}")
         return jsonify({"ok": False, "msg": "未知渠道"})
-
-    print(f"[推送测试] 结果: ok={ok}, msg={msg}")
     return jsonify({"ok": ok, "msg": msg})
 
 def _shutdown_scheduler():
     if scheduler.running:
         scheduler.shutdown(wait=False)
-
-@app.route("/webhook/qq", methods=["POST"])
-def qq_webhook():
-    print(f"\n[QQ Webhook] ========== 收到Webhook回调 ==========")
-    print(f"[QQ Webhook] Method: {request.method}")
-    print(f"[QQ Webhook] Headers: {dict(request.headers)}")
-    data = request.json
-    print(f"[QQ Webhook] Body: {json.dumps(data, ensure_ascii=False)[:2000]}")
-
-    if not data:
-        print(f"[QQ Webhook] Body为空")
-        return jsonify({})
-
-    op = data.get("op")
-    print(f"[QQ Webhook] op: {op}")
-
-    if op == 0:
-        print(f"[QQ Webhook] 回复心跳")
-        return jsonify({"op": 1})
-
-    print(f"[QQ Webhook] 转发给处理器...")
-    try:
-        from .qqbot import handle_qq_message
-        handle_qq_message(data)
-    except Exception as e:
-        print(f"[QQ Webhook] 处理异常: {e}")
-        import traceback
-        traceback.print_exc()
-
-    print(f"[QQ Webhook] ========== 处理完成 ==========")
-    return jsonify({})
-
-@app.route("/api/config/qq", methods=["GET", "POST"])
-def api_config_qq():
-    cfg = load_config()
-    qq = cfg.get("push_channels", {}).get("qq_bot", {})
-    if request.method == "POST":
-        data = request.json
-        qq.update(data)
-        cfg.setdefault("push_channels", {})["qq_bot"] = qq
-        save_config(cfg)
-        print(f"[QQ配置] 已保存: {json.dumps(qq, ensure_ascii=False)}")
-        return jsonify({"ok": True})
-    return jsonify(qq)
 
 def create_app():
     init_db()
@@ -353,16 +257,13 @@ def create_app():
     scheduler.start()
     scheduled_fetch()
     atexit.register(_shutdown_scheduler)
-
     try:
         from .qqbot import start_bot
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
         if qq.get("app_id") and qq.get("token"):
             start_bot()
-            print("[App] QQBot已启动")
     except Exception as e:
         print(f"[App] QQBot启动失败: {e}")
-
     return app
 
 if __name__ == "__main__":
