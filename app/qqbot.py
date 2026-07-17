@@ -1,4 +1,4 @@
-import json, time, threading, re
+import json, time, threading, re, requests
 import websocket
 from .config import load_config, save_config
 from .gold_price import get_current_price
@@ -8,6 +8,24 @@ from .models import get_latest_price
 
 WS_URL = "wss://api.sgroup.qq.com/websocket"
 RECONNECT_DELAY = 5
+
+def _get_access_token(app_id, app_secret):
+    """获取QQ Bot access_token"""
+    try:
+        resp = requests.post("https://bots.qq.com/app/getAppAccessToken", json={
+            "appId": app_id,
+            "clientSecret": app_secret,
+        }, timeout=10)
+        data = resp.json()
+        token = data.get("access_token")
+        if token:
+            print(f"[QQBot] access_token获取成功")
+            return token
+        print(f"[QQBot] access_token获取失败: {data}")
+        return None
+    except Exception as e:
+        print(f"[QQBot] 获取token异常: {e}")
+        return None
 
 class QQBot:
     def __init__(self):
@@ -63,9 +81,15 @@ class QQBot:
         cfg = load_config()
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
         app_id = qq.get("app_id", "").strip()
-        token = qq.get("token", "").strip()
-        if not app_id or not token:
+        app_secret = qq.get("token", "").strip()
+        if not app_id or not app_secret:
             print("[QQBot] AppID或Token为空")
+            return
+
+        access_token = _get_access_token(app_id, app_secret)
+        if not access_token:
+            print("[QQBot] 获取access_token失败，5秒后重试")
+            time.sleep(5)
             return
 
         print(f"[QQBot] 连接WebSocket...")
@@ -78,7 +102,7 @@ class QQBot:
             on_close=self._on_close,
         )
         self.ws._app_id = app_id
-        self.ws._token = token
+        self.ws._access_token = access_token
         self._heartbeat_ack = True
         self._seq = 0
         self.ws.run_forever(ping_interval=self._heartbeat_interval, ping_timeout=10)
@@ -143,11 +167,11 @@ class QQBot:
 
     def _identify(self, ws):
         app_id = ws._app_id
-        token = ws._token
+        access_token = ws._access_token
         payload = {
             "op": 2,
             "d": {
-                "token": f"QQBot {app_id}.{token}",
+                "token": f"QQBot {app_id}.{access_token}",
                 "intents": 3276799,
                 "shard": [0, 1],
                 "properties": {
