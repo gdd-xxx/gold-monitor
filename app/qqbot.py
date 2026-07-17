@@ -148,21 +148,16 @@ class QQBot:
         print(f"[QQBot] WebSocket已断开: {close_status}")
 
     def _start_heartbeat(self, ws):
+        interval = self._heartbeat_interval
+        print(f"[QQBot] 启动心跳, 间隔{interval}秒")
         def heartbeat():
             while self.running and self.ws == ws and not self._stop_event.is_set():
-                if not self._heartbeat_ack:
-                    print("[QQBot] 心跳超时，断开重连")
-                    try:
-                        ws.close()
-                    except:
-                        pass
-                    return
-                self._heartbeat_ack = False
                 try:
                     ws.send(json.dumps({"op": 1, "d": self._seq}))
-                except:
+                except Exception as e:
+                    print(f"[QQBot] 心跳发送失败: {e}")
                     return
-                self._stop_event.wait(self._heartbeat_interval)
+                self._stop_event.wait(interval)
         threading.Thread(target=heartbeat, daemon=True).start()
 
     def _identify(self, ws):
