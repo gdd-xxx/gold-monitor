@@ -172,7 +172,7 @@ class QQBot:
             "op": 2,
             "d": {
                 "token": f"QQBot {access_token}",
-                "intents": 3276799,
+                "intents": 33554945,
                 "shard": [0, 1],
                 "properties": {
                     "os": "linux",
@@ -183,7 +183,7 @@ class QQBot:
         }
         try:
             ws.send(json.dumps(payload))
-            print(f"[QQBot] Identify已发送 (appid={app_id[:6]}...)")
+            print(f"[QQBot] Identify已发送 (appid={app_id[:6]}..., intents=33554945)")
         except Exception as e:
             print(f"[QQBot] Identify失败: {e}")
 
