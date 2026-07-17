@@ -124,9 +124,17 @@ def push_qq(title, content):
 
     user_id = qq.get("user_id", "").strip()
     channel_id = qq.get("channel_id", "").strip()
+    open_id = qq.get("open_id", "").strip()
 
-    if not user_id and not channel_id:
-        return False, "QQ推送需要用户ID或频道ID"
+    print(f"[QQ推送] user_id={user_id}, open_id={open_id}, channel_id={channel_id}")
+
+    if not user_id and not open_id and not channel_id:
+        return False, "QQ推送需要用户ID(请先私聊机器人)"
+
+    if open_id:
+        ok, msg = qq_send_message(app_id, access_token, open_id, "c2c", plain)
+        if ok:
+            return True, msg
 
     if user_id:
         ok, msg = qq_send_message(app_id, access_token, user_id, "c2c", plain)
