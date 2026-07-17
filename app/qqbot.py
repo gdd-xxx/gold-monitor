@@ -35,7 +35,6 @@ class QQBot:
         print("[QQBot] 启动线程")
 
     def restart(self):
-        """重启Bot（用于配置更新后）"""
         print("[QQBot] 重启中...")
         self.stop()
         time.sleep(2)
@@ -63,10 +62,10 @@ class QQBot:
     def _connect(self):
         cfg = load_config()
         qq = cfg.get("push_channels", {}).get("qq_bot", {})
-        token = qq.get("token", "").strip()
         app_id = qq.get("app_id", "").strip()
-
-        if not token or not app_id:
+        token = qq.get("token", "").strip()
+        if not app_id or not token:
+            print("[QQBot] AppID或Token为空")
             return
 
         print(f"[QQBot] 连接WebSocket...")
@@ -78,11 +77,10 @@ class QQBot:
             on_error=self._on_error,
             on_close=self._on_close,
         )
-        self.ws._token = token
         self.ws._app_id = app_id
+        self.ws._token = token
         self._heartbeat_ack = True
         self._seq = 0
-
         self.ws.run_forever(ping_interval=self._heartbeat_interval, ping_timeout=10)
 
     def _on_open(self, ws):
@@ -115,7 +113,7 @@ class QQBot:
             if t == "READY":
                 self._session_id = d.get("session_id")
                 print(f"[QQBot] 鉴权成功! session_id={self._session_id}")
-            elif t in ("MESSAGE_CREATE", "AT_MESSAGE_CREATE", "DIRECT_MESSAGE_CREATE"):
+            elif t in ("MESSAGE_CREATE", "AT_MESSAGE_CREATE", "DIRECT_MESSAGE_CREATE", "C2C_MESSAGE_CREATE", "GROUP_AT_MESSAGE_CREATE"):
                 print(f"[QQBot] 收到消息事件: {t}")
                 self._handle_message(d)
 
@@ -141,18 +139,15 @@ class QQBot:
                 except:
                     return
                 self._stop_event.wait(self._heartbeat_interval)
-        t = threading.Thread(target=heartbeat, daemon=True)
-        t.start()
+        threading.Thread(target=heartbeat, daemon=True).start()
 
     def _identify(self, ws):
-        cfg = load_config()
-        qq = cfg.get("push_channels", {}).get("qq_bot", {})
-        app_id = qq.get("app_id", "").strip()
-        token = qq.get("token", "").strip()
+        app_id = ws._app_id
+        token = ws._token
         payload = {
             "op": 2,
             "d": {
-                "token": f"QQBot {token}",
+                "token": f"QQBot {app_id}.{token}",
                 "intents": 3276799,
                 "shard": [0, 1],
                 "properties": {
@@ -164,7 +159,7 @@ class QQBot:
         }
         try:
             ws.send(json.dumps(payload))
-            print("[QQBot] Identify已发送")
+            print(f"[QQBot] Identify已发送 (appid={app_id[:6]}...)")
         except Exception as e:
             print(f"[QQBot] Identify失败: {e}")
 
@@ -179,7 +174,7 @@ class QQBot:
         channel_id = data.get("channel_id", "")
         msg_id = data.get("id", "")
 
-        print(f"[QQBot] 消息: {content} (from {user_name}, uid={user_id}, ch={channel_id})")
+        print(f"[QQBot] 消息: {content} (from {user_name}, uid={user_id})")
 
         content = re.sub(r'<@!?\d+>', '', content).strip()
         if not content:
