@@ -171,7 +171,7 @@ class QQBot:
         payload = {
             "op": 2,
             "d": {
-                "token": f"QQBot {app_id}.{access_token}",
+                "token": f"QQBot {access_token}",
                 "intents": 3276799,
                 "shard": [0, 1],
                 "properties": {
