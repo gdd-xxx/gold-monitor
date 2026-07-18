@@ -93,7 +93,7 @@ def _sina_code_to_market(code):
 def _futures_code_to_sina(code):
     code = code.strip().upper()
     if re.match(r'^[A-Z]{1,3}\d{1,2}$', code):
-        return code.lower()
+        return code
     return None
 
 def _parse_sina_hq(raw):
