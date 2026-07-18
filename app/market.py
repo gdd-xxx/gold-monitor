@@ -193,21 +193,21 @@ def fetch_futures(code):
         if '=""' in raw or not re.search(r'"[^"]+"', raw):
             return None
         fields = _parse_sina_hq(raw)
-        if not fields:
+        if not fields or len(fields) < 7:
             return None
         name = fields[0]
         if not name:
             matched = [f for f in FUTURES_POPULAR if f["code"].upper() == code.upper()]
             name = matched[0]["name"] if matched else code
-        current = float(fields[3]) if fields[3] else 0
+        current = float(fields[6]) if fields[6] else 0
         if current <= 0:
             return None
-        open_price = float(fields[1]) if fields[1] else current
-        high = float(fields[4]) if fields[4] else current
-        low = float(fields[5]) if fields[5] else current
-        prev_close = float(fields[2]) if fields[2] else current
-        volume = float(fields[8]) if len(fields) > 8 and fields[8] else 0
-        open_interest = float(fields[13]) if len(fields) > 13 and fields[13] else 0
+        open_price = float(fields[2]) if fields[2] else current
+        high = float(fields[3]) if fields[3] else current
+        low = float(fields[4]) if fields[4] else current
+        prev_close = float(fields[5]) if fields[5] else current
+        volume = float(fields[13]) if len(fields) > 13 and fields[13] else 0
+        open_interest = float(fields[14]) if len(fields) > 14 and fields[14] else 0
         change_pct = round((current - prev_close) / prev_close * 100, 2) if prev_close else 0
         exchange = ""
         matched = [f for f in FUTURES_POPULAR if f["code"].upper() == code.upper()]
