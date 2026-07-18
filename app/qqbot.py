@@ -4,13 +4,13 @@ from .config import load_config, save_config
 from .gold_price import get_current_price
 from .chat import parse_chat_command
 from .notifier import qq_send_message, build_pnl_content
-from .models import get_latest_price
+from .models import get_latest_price, get_latest_market_price
+from .market import search_stock, add_watch_item, list_watch_items
 
 WS_URL = "wss://api.sgroup.qq.com/websocket"
 RECONNECT_DELAY = 5
 
 def _get_access_token(app_id, app_secret):
-    """获取QQ Bot access_token"""
     try:
         resp = requests.post("https://bots.qq.com/app/getAppAccessToken", json={
             "appId": app_id,
@@ -226,17 +226,60 @@ class QQBot:
             cp = current["price"] if current else 0
             response = build_pnl_content(cfg.get("my_purchases", []), cp)
         elif response == "__QUERY_CHART__":
-            # 发送今日走势文字版
             from .models import get_today_prices
             prices = get_today_prices()
             if prices:
                 lines = ["今日金价走势：\n"]
-                for p in prices[-10:]:  # 最近10条
+                for p in prices[-10:]:
                     lines.append(f"  {p['time']} → {p['price']}元/克")
                 lines.append(f"\n共 {len(prices)} 条记录")
                 response = "\n".join(lines)
             else:
                 response = "今日暂无金价数据"
+        elif response == "__QUERY_WATCHLIST__":
+            watches = list_watch_items(cfg)
+            if not watches:
+                response = "监控列表为空\n发送「添加监控 贵州茅台」或「添加监控 600519」添加"
+            else:
+                from .models import get_all_latest_market_prices
+                codes = [w.get("code") for w in watches]
+                latest = get_all_latest_market_prices(codes)
+                lines = ["监控列表：\n"]
+                for i, w in enumerate(watches):
+                    type_label = {"a_stock": "A股", "hk_stock": "港股", "fund": "基金", "futures": "期货"}.get(w.get("type", ""), w.get("type", ""))
+                    info = latest.get(w.get("code"), {})
+                    if info:
+                        pct = info.get("change_pct", 0)
+                        sign = "+" if pct >= 0 else ""
+                        lines.append(f"{i+1}. [{type_label}] {w.get('name', '')}({w.get('code', '')}) {info['price']} {sign}{pct}%")
+                    else:
+                        lines.append(f"{i+1}. [{type_label}] {w.get('name', '')}({w.get('code', '')}) -")
+                lines.append("\n发送「删除监控1」删除，「行情 600519」查看行情")
+                response = "\n".join(lines)
+        elif response.startswith("__SEARCH__"):
+            keyword = response.replace("__SEARCH__", "")
+            results = search_stock(keyword)
+            if not results:
+                response = f"未找到「{keyword}」相关结果"
+            elif len(results) == 1:
+                item = results[0]
+                ok, msg = add_watch_item(cfg, item)
+                type_label = {"a_stock": "A股", "hk_stock": "港股", "fund": "基金", "futures": "期货"}.get(item.get("type", ""), item.get("type", ""))
+                if ok:
+                    response = f"已添加监控：{type_label} {item['name']}({item['code']})\n当前价：{item['price']}"
+                else:
+                    response = msg
+            else:
+                lines = [f"找到{len(results)}个结果，回复序号添加监控：\n"]
+                for i, item in enumerate(results):
+                    type_label = {"a_stock": "A股", "hk_stock": "港股", "fund": "基金", "futures": "期货"}.get(item.get("type", ""), item.get("type", ""))
+                    pct = item.get("change_pct", 0)
+                    sign = "+" if pct >= 0 else ""
+                    lines.append(f"{i+1}. [{type_label}] {item['name']}({item['code']}) {item['price']} {sign}{pct}%")
+                from .chat import _set_state
+                _set_state({"step": "pick_search_result", "results": results})
+                lines.append("\n回复序号添加，或回复取消退出")
+                response = "\n".join(lines)
 
         plain = re.sub(r'\*\*(.+?)\*\*', r'\1', response)
 

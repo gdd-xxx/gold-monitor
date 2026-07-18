@@ -23,6 +23,10 @@
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1"/></svg>
                 <span>仪表盘</span>
             </a>
+            <a class="nav-item" data-tab="watches" onclick="switchTab('watches')">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                <span>监控列表</span>
+            </a>
             <a class="nav-item" data-tab="pnl" onclick="switchTab('pnl')">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <span>盈亏计算</span>
@@ -88,6 +92,29 @@
                 </div>
                 <div class="records-list" id="todayPrices">
                     <div class="empty-state">暂无数据</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-watches">
+            <div class="card">
+                <div class="section-header">
+                    <h3>添加监控</h3>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="watchSearchInput" placeholder="输入股票名称、代码或基金代码..." onkeypress="if(event.key==='Enter')searchWatch()">
+                    <button onclick="searchWatch()" class="btn btn-primary" id="btnSearchWatch">搜索</button>
+                </div>
+                <div id="searchResults" class="search-results"></div>
+            </div>
+
+            <div class="card">
+                <div class="section-header">
+                    <h3>监控列表</h3>
+                    <span class="badge" id="watchCount">0条</span>
+                </div>
+                <div id="watchList" class="watch-list">
+                    <div class="empty-state">暂无监控，搜索添加股票/基金</div>
                 </div>
             </div>
         </div>
@@ -194,17 +221,6 @@
                         <label>用户ID (用于私聊推送)</label>
                         <input type="text" id="qqUserId" placeholder="输入你的QQ用户ID">
                     </div>
-                    <div class="webhook-hint">
-                        <strong>获取用户ID方法：</strong><br>
-                        1. 在QQ开放平台 → 你的机器人 → 开发设置<br>
-                        2. 订阅"接收消息"事件，回调地址填: <code>http://你的公网IP:5000/webhook/qq</code><br>
-                        3. 然后在QQ上给机器人发一条消息<br>
-                        4. 日志中会显示你的用户ID<br>
-                        <br>
-                        <strong>或者手动获取：</strong><br>
-                        用浏览器打开: <code>https://u.y.qq.com/cgi-bin/userinfo?need_fansnum=1</code><br>
-                        登录QQ后可看到用户ID（数字格式）
-                    </div>
                 </div>
                 <button onclick="savePushSettings()" class="btn btn-primary">保存推送设置</button>
             </div>
@@ -261,7 +277,7 @@
         <div class="tab-content" id="tab-chat">
             <div class="chat-container">
                 <div class="chat-messages" id="chatMessages">
-                    <div class="chat-msg system">输入命令控制程序，如"阈值870-900"、"添加870.5"、"查询"、"帮助"</div>
+                    <div class="chat-msg system">输入命令控制程序，如"添加监控 贵州茅台"、"查询"、"帮助"</div>
                 </div>
                 <div class="chat-input-area">
                     <input type="text" id="chatInput" placeholder="输入命令..." onkeypress="if(event.key==='Enter')sendChat()">

@@ -1,4 +1,4 @@
-import os, json, tempfile
+import os, json, tempfile, copy
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -50,7 +50,7 @@ def load_config():
             if "app_secret" in qq and "token" not in qq:
                 qq["token"] = qq.pop("app_secret")
         return cfg
-    return DEFAULT_CONFIG.copy()
+    return copy.deepcopy(DEFAULT_CONFIG)
 
 def save_config(cfg):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:

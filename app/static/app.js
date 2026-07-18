@@ -2,6 +2,7 @@ let goldChart = null;
 let priceHistory = [];
 let refreshTimer = null;
 let currentInterval = 60;
+let searchResults = [];
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -15,7 +16,9 @@ document.addEventListener("DOMContentLoaded", () => {
     loadPnl();
     loadConfig();
     loadVersion();
+    loadWatches();
     setInterval(loadPrice, 5000);
+    setInterval(loadWatches, 30000);
     updateStatus(true);
     initPnlCalc();
 });
@@ -124,6 +127,7 @@ function switchTab(name) {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     document.querySelector(`.nav-item[data-tab="${name}"]`).classList.add('active');
+    if (name === 'watches') loadWatches();
 }
 
 function setChartRange(days, el) {
@@ -443,16 +447,11 @@ async function savePushSettings() {
         };
     }
 
-    console.log("[保存] payload:", JSON.stringify(payload));
-
-    const res = await fetch("/api/config/push", {
+    await fetch("/api/config/push", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    console.log("[保存] 响应:", data);
-
     showToast("推送设置已保存");
 }
 
@@ -481,6 +480,135 @@ async function testPush(channel) {
     } catch (e) { showToast("测试失败"); }
 }
 
+async function searchWatch() {
+    const input = document.getElementById("watchSearchInput");
+    const keyword = input.value.trim();
+    if (!keyword) return;
+    const btn = document.getElementById("btnSearchWatch");
+    btn.textContent = "搜索中...";
+    btn.disabled = true;
+    try {
+        const res = await fetch("/api/watches", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ keyword })
+        });
+        const data = await res.json();
+        renderSearchResults(data.results || []);
+    } catch (e) {
+        showToast("搜索失败");
+    }
+    btn.textContent = "搜索";
+    btn.disabled = false;
+}
+
+function renderSearchResults(results) {
+    const el = document.getElementById("searchResults");
+    if (results.length === 0) {
+        el.innerHTML = '<div class="empty-state">未找到相关结果</div>';
+        return;
+    }
+    searchResults = results;
+    let html = '<div class="search-result-list">';
+    results.forEach((item, i) => {
+        const t = typeLabel[item.type] || item.type;
+        const typeClass = item.type === 'futures' ? ' futures' : '';
+        const pct = item.change_pct || 0;
+        const sign = pct >= 0 ? '+' : '';
+        const color = pct >= 0 ? 'var(--green)' : 'var(--red)';
+        html += `
+        <div class="search-result-item" onclick="addWatchItem(${i})">
+            <div class="result-info">
+                <span class="result-type${typeClass}">${t}</span>
+                <span class="result-name">${escapeHtml(item.name)}</span>
+                <span class="result-code">${item.code}</span>
+            </div>
+            <div class="result-price">
+                <span>${item.price}</span>
+                <span style="color:${color}">${sign}${pct}%</span>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+async function addWatchItem(index) {
+    const item = searchResults[index];
+    if (!item) return;
+    try {
+        const res = await fetch("/api/watches", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ keyword: item.code })
+        });
+        const data = await res.json();
+        if (data.ok && data.results && data.results.length > 0) {
+            const added = data.results[0];
+            const typeLabel = {a_stock: 'A股', hk_stock: '港股', fund: '基金', futures: '期货'};
+            showToast(`已添加: ${typeLabel[added.type] || ''} ${added.name}`);
+            loadWatches();
+            document.getElementById("searchResults").innerHTML = '';
+            document.getElementById("watchSearchInput").value = '';
+        }
+    } catch (e) {
+        showToast("添加失败");
+    }
+}
+
+async function loadWatches() {
+    try {
+        const res = await fetch("/api/watches");
+        const data = await res.json();
+        const el = document.getElementById("watchList");
+        const countEl = document.getElementById("watchCount");
+        const watches = data.watches || [];
+        countEl.textContent = watches.length + "条";
+        if (watches.length === 0) {
+            el.innerHTML = '<div class="empty-state">暂无监控，搜索添加股票/基金</div>';
+            return;
+        }
+        const typeLabel = {a_stock: 'A股', hk_stock: '港股', fund: '基金', futures: '期货'};
+        let html = "";
+        watches.forEach((w, i) => {
+            const t = typeLabel[w.type] || w.type;
+            const typeClass = w.type === 'futures' ? ' futures' : '';
+            const price = w.price || '-';
+            const pct = w.change_pct || 0;
+            const sign = pct >= 0 ? '+' : '';
+            const color = pct >= 0 ? 'var(--green)' : 'var(--red)';
+            const time = w.time || '--';
+            html += `
+            <div class="watch-item">
+                <div class="watch-info">
+                    <span class="watch-type${typeClass}">${t}</span>
+                    <div class="watch-name">${escapeHtml(w.name || '')}</div>
+                    <div class="watch-code">${w.code}</div>
+                </div>
+                <div class="watch-price">
+                    <div class="watch-current">${price}</div>
+                    <div class="watch-pct" style="color:${color}">${sign}${pct}%</div>
+                    <div class="watch-time">${time}</div>
+                </div>
+                <div class="watch-actions">
+                    <span class="watch-delete" onclick="deleteWatch(${i})">删除</span>
+                </div>
+            </div>`;
+        });
+        el.innerHTML = html;
+    } catch (e) { console.error(e); }
+}
+
+async function deleteWatch(index) {
+    try {
+        await fetch(`/api/watches?index=${index}`, { method: "DELETE" });
+        loadWatches();
+        showToast("已删除");
+    } catch (e) {
+        showToast("删除失败");
+    }
+}
+
 async function sendChat() {
     const input = document.getElementById("chatInput");
     const text = input.value.trim();
@@ -495,6 +623,9 @@ async function sendChat() {
         });
         const data = await res.json();
         addChatMsg(data.response || "未知响应", "bot");
+        if (text.includes("添加监控") || text.includes("删除")) {
+            loadWatches();
+        }
     } catch (e) {
         addChatMsg("发送失败: " + e.message, "system");
     }

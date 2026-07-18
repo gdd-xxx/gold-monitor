@@ -92,7 +92,9 @@ def get_current_price():
         return price, "jdjygold"
 
     price = fetch_czbank_price()
-    return price, "czbank"
+    if price:
+        return price, "czbank"
+    return None, None
 
 def calculate_pnl(purchase_price, current_price, fee_percent=0):
     """Calculate profit/loss per gram"""
